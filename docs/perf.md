@@ -1,6 +1,6 @@
 # Performance and scalability notes
 
-All numbers on this page were measured, not estimated. Every run can be repeated with the commands below.
+All numbers on this page were measured, not estimated, on 22 November 2026 with demo data version 2 (85 spots in Sousse). Every run can be repeated with the commands below. The full QA report, including functional tests, is in [qa.md](qa.md).
 
 **Where it ran:** one laptop (Intel i7-13650HX, 16 GB RAM, Windows 11, Node 22.18) with a production build (`next build && next start`) as a single Node process. PostgreSQL 18.7 ran locally on the same machine. Load generator and server shared the CPU, so these are conservative figures for one instance, not a cluster.
 
@@ -10,11 +10,16 @@ All numbers on this page were measured, not estimated. Every run can be repeated
 
 | Scenario | Connections | Requests | Req/s | p50 | p90 | p99 | Errors | Status codes |
 |---|---:|---:|---:|---:|---:|---:|---:|---|
-| Search spots (geo radius + availability for a time window) | 50 | 8,384 | 419 | 120 ms | 137 ms | 195 ms | 0 | 200: 8,384 |
-| Spot detail + 36 h schedule | 50 | 8,019 | 401 | 123 ms | 144 ms | 205 ms | 0 | 200: 8,019 |
-| Booking burst (20 drivers fighting over 360 slots) | 20 | 6,544 | 327 | 60 ms | 68 ms | 83 ms | 0 | 201: 360, 409: 6,184 |
+| Search spots (geo radius + availability + ranking, 4 sort orders) | 50 | 4,875 | 244 | 203 ms | 228 ms | 287 ms | 0 | 200: 4,875 |
+| Spot detail + 36 h schedule + reviews | 50 | 6,287 | 314 | 155 ms | 177 ms | 201 ms | 0 | 200: 6,287 |
+| Top spots + host leaderboard | 50 | 6,756 | 338 | 146 ms | 155 ms | 177 ms | 0 | 200: 6,756 |
+| Client dashboard (profile, points, badges) | 50 | 4,741 | 237 | 210 ms | 222 ms | 243 ms | 0 | 200: 4,741 |
+| Renter dashboard (earnings, rank, reviews) | 50 | 4,600 | 230 | 216 ms | 229 ms | 262 ms | 0 | 200: 4,600 |
+| Booking burst (20 drivers fighting over 360 slots) | 20 | 5,716 | 286 | 69 ms | 75 ms | 85 ms | 0 | 201: 360, 409: 5,356 |
 
-How to read the booking burst: each of the 360 one-hour slots on the same spot was requested about 18 times. Exactly one request per slot got `201 Created`; every other request got `409 slot_taken`. After the run, a query for overlapping live bookings returned **0**. Correctness held under contention, and refusals stayed fast.
+**Compared with the first measurement** (29 demo spots, before accounts, photos and ranking), search went from 419 to 244 req/s. Each search now returns about 3 times more spots (29 on average instead of 10; 44 around Bab Bhar, about 39 KB of JSON), each with photos, rating and accepted payment methods, then ranked. In spots delivered per second, the server does more than before: about 7,000 against 4,200.
+
+How to read the booking burst: each of the 360 one-hour slots on the same spot was requested about 16 times. Exactly one request per slot got `201 Created`; every other request got `409 slot_taken`. After the run, a query for overlapping live bookings returned **0**. Correctness held under contention, and refusals stayed fast.
 
 The search scenario rotates across six Sousse neighbourhoods and five time windows, and sends `x-plassa-nolog: 1` so the run does not pollute the demand heatmap. No caching layer sits in front: every request is a real database query.
 
@@ -24,8 +29,8 @@ The search scenario rotates across six Sousse neighbourhoods and five time windo
 
 | Spots in database | p50 | p95 | max | Indexes used |
 |---:|---:|---:|---:|---|
-| 10,000 | 0.91 ms | 1.32 ms | 1.69 ms | `spots_earth_gist`, `bookings_no_overlap` |
-| 100,000 | 29.2 ms | 31.4 ms | 31.8 ms | `spots_earth_gist`, `bookings_no_overlap` |
+| 10,000 | 0.92 ms | 1.27 ms | 1.69 ms | `spots_earth_gist`, `bookings_no_overlap` |
+| 100,000 | 30.2 ms | 32.4 ms | 32.6 ms | `spots_earth_gist`, `bookings_no_overlap` |
 
 At 100,000 spots the synthetic data puts about 12,500 spots in each city, roughly 900 inside a 1.8 km radius. That is far denser than any real parking market. Even then the query stays near 30 ms because the GiST index on `ll_to_earth(lat, lng)` narrows the search to a bounding box before any distance is computed. The availability check uses the same GiST index as the double-booking constraint. Sousse today would have hundreds of spots, not tens of thousands.
 
@@ -33,7 +38,7 @@ At 100,000 spots the synthetic data puts about 12,500 spots in each city, roughl
 
 `tests/api/concurrency-and-hosts.test.ts` fires 50 booking requests for the same spot and time at once:
 
-- 1 confirmed, 49 refused with `slot_taken`, in about 150 ms.
+- 1 confirmed, 49 refused with `slot_taken`, in 141 ms.
 - The guarantee comes from a PostgreSQL exclusion constraint, not from application code:
 
 ```sql
@@ -48,7 +53,7 @@ Two app servers, ten app servers, or a retry storm cannot create a double bookin
 | Claim | What backs it in the code |
 |---|---|
 | The app tier scales horizontally | No in-memory state. Sessions are signed JWT cookies (`src/server/auth.ts`). Any instance can serve any request. |
-| No double booking at any scale | Exclusion constraint above, tested with 50 parallel requests and a 6,544-request burst. |
+| No double booking at any scale | Exclusion constraint above, tested with 50 parallel requests and a 5,716-request burst. |
 | Geo search stays fast as supply grows | `earth_box` and a GiST index: under 2 ms at 10k spots, about 30 ms at 100k on a laptop. |
 | Serverless-friendly database use | Small pool per instance (`DB_POOL_MAX`, default 5 when hosted), meant to sit behind the provider's pooler (Neon / Supabase PgBouncer). |
 | Multi-city rollout is data, not code | `cities` and `zones` tables. A new city is a seed row and a map centre. |

@@ -27,6 +27,9 @@ test("host lists a new spot and drivers can find it", async ({ page, request }) 
   await expect(map.locator("canvas")).toBeVisible();
   const box = (await map.boundingBox())!;
   await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+  // a real photo: resized in the browser, uploaded, shown as a thumbnail
+  await page.getByTestId("photo-input").setInputFiles("public/spots/garage-1.jpg");
+  await expect(page.locator("img[src^=\"/api/photos/\"]")).toHaveCount(1);
   await page.getByLabel("Prix par heure (DT)").fill("1.800");
   // accept cash and D17 only
   await page.getByTestId("new-method-flouci").click();
@@ -48,6 +51,9 @@ test("host lists a new spot and drivers can find it", async ({ page, request }) 
   const body = await res.json();
   const mine = body.spots.find((s: { title: string }) => s.title === title);
   expect(mine.paymentMethods).toEqual(["cash", "d17"]);
+  expect(mine.photos).toHaveLength(1);
+  const photo = await request.get(mine.photos[0]);
+  expect(photo.headers()["content-type"]).toBe("image/jpeg");
 });
 
 test("city view shows demand and supply", async ({ page }) => {

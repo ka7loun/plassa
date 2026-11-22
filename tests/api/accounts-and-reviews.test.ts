@@ -6,6 +6,8 @@ import { AppError } from "@/server/errors";
 import { createSpot, getSpot, patchSpot, topSpots } from "@/server/spots";
 import { login, signup } from "@/server/users";
 import { rankScore } from "@/lib/ranking";
+import { loadPhoto, MAX_PHOTO_BYTES, savePhoto, sniffImage } from "@/server/photos";
+import { readFileSync } from "node:fs";
 import { spotId } from "../../db/seed";
 import { DEMO_PASSWORD, DEMO_USERS, SPOTS } from "../../db/seed-data";
 import { ALWAYS_OPEN, DEMO_HOST, DRIVER, freshDb, future, OTHER_DRIVER } from "./helpers";
@@ -174,5 +176,39 @@ describe("dashboards and rankings", () => {
     const leaders = await hostLeaderboard(pool, 5);
     const stays = leaders.map((l) => l.stays);
     expect([...stays].sort((a, b) => b - a)).toEqual(stays);
+  });
+});
+
+describe("photo uploads", () => {
+  const jpeg = new Uint8Array(readFileSync("public/spots/garage-1-sm.jpg"));
+
+  it("stores a real JPEG and serves it back byte for byte", async () => {
+    expect(sniffImage(jpeg)).toBe("image/jpeg");
+    const saved = await savePhoto(pool, DEMO_HOST, jpeg);
+    expect(saved.url).toBe(`/api/photos/${saved.id}`);
+    const back = await loadPhoto(pool, saved.id);
+    expect(back.content_type).toBe("image/jpeg");
+    expect(Buffer.compare(back.data, Buffer.from(jpeg))).toBe(0);
+  });
+
+  it("refuses files that are not images, even when renamed", async () => {
+    const html = new TextEncoder().encode("<html><script>alert(1)</script></html>");
+    expect(await code(savePhoto(pool, DEMO_HOST, html))).toBe("bad_request");
+    expect(await code(savePhoto(pool, DEMO_HOST, new Uint8Array()))).toBe("bad_request");
+  });
+
+  it("refuses photos over 1.5 MB", async () => {
+    const big = new Uint8Array(MAX_PHOTO_BYTES + 1);
+    big.set(jpeg.subarray(0, 3));
+    expect(await code(savePhoto(pool, DEMO_HOST, big))).toBe("too_large");
+  });
+
+  it("only accepts photo paths the app itself produced", async () => {
+    const { spotBody } = await import("@/lib/validation");
+    const base = { title: "Garage", description: "", address: "", lat: 35.83, lng: 10.63, spotType: "garage", covered: false, privateAttested: true, gardienName: null, gardienPhone: null, paymentMethods: ["cash"], priceMillimes: 1000, peakMultiplier: 1, peakStartHour: null, peakEndHour: null, peakMonths: [], availDays: [1], availStartMin: 480, availEndMin: 1080 };
+    expect(spotBody.safeParse({ ...base, photos: ["/spots/garage-1.jpg", "/api/photos/0b9a3c1e-2f4d-4c6a-9e8b-1a2b3c4d5e6f"] }).success).toBe(true);
+    expect(spotBody.safeParse({ ...base, photos: ["https://evil.example/x.jpg"] }).success).toBe(false);
+    expect(spotBody.safeParse({ ...base, photos: ["javascript:alert(1)"] }).success).toBe(false);
+    expect(spotBody.safeParse({ ...base, photos: Array(7).fill("/spots/garage-1.jpg") }).success).toBe(false);
   });
 });

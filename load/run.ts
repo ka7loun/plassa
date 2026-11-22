@@ -19,14 +19,18 @@ function window(i: number) {
   return { start: start.toISOString(), end: new Date(start.getTime() + 2 * 3_600_000).toISOString() };
 }
 
+const SORTS = ["recommended", "distance", "price", "rating"];
+const SPOT_COUNT = 85; // demo data version 2
+
 let n = 0;
 function searchPath() {
   const [lat, lng] = POINTS[n % POINTS.length];
+  const sort = SORTS[Math.floor(n / POINTS.length) % SORTS.length];
   const w = window(n++);
-  return `/api/spots?lat=${lat}&lng=${lng}&radius=1800&start=${w.start}&end=${w.end}`;
+  return `/api/spots?lat=${lat}&lng=${lng}&radius=1800&start=${w.start}&end=${w.end}&sort=${sort}`;
 }
 
-async function login(role: "driver") {
+async function login(role: "driver" | "host") {
   const r = await fetch(`${BASE}/api/auth/demo`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ role }) });
   return r.headers.get("set-cookie")!.split(";")[0];
 }
@@ -66,10 +70,11 @@ async function main() {
   const health = await fetch(`${BASE}/api/health`).then((r) => r.json());
   if (!health.ok) throw new Error(`server not healthy at ${BASE}`);
   const cookie = await login("driver");
+  const hostCookie = await login("host");
   const rows: Row[] = [];
 
   rows.push(
-    await run("Search spots (geo + availability)", {
+    await run("Search spots (geo + availability + ranking)", {
       url: BASE,
       connections: 50,
       headers: { "x-plassa-nolog": "1" },
@@ -78,14 +83,14 @@ async function main() {
   );
 
   rows.push(
-    await run("Spot detail + 36h schedule", {
+    await run("Spot detail + 36h schedule + reviews", {
       url: BASE,
       connections: 50,
       requests: [
         {
           method: "GET",
           setupRequest: (req) => {
-            const id = `10000000-0000-4000-8000-${String(1 + (n++ % 28)).padStart(12, "0")}`;
+            const id = `10000000-0000-4000-8000-${String(1 + (n++ % SPOT_COUNT)).padStart(12, "0")}`;
             const w = window(n);
             return { ...req, path: `/api/spots/${id}?start=${w.start}&end=${w.end}` };
           },
@@ -93,6 +98,10 @@ async function main() {
       ],
     }),
   );
+
+  rows.push(await run("Top spots + host leaderboard", { url: `${BASE}/api/spots/top`, connections: 50 }));
+  rows.push(await run("Client dashboard (profile, points, badges)", { url: `${BASE}/api/me/dashboard`, connections: 50, headers: { cookie } }));
+  rows.push(await run("Renter dashboard (earnings, rank, reviews)", { url: `${BASE}/api/host/dashboard`, connections: 50, headers: { cookie: hostCookie } }));
 
   // Booking burst: many drivers hitting a handful of spots. Most requests are
   // expected to be refused with 409 (slot taken) — that is the point: the

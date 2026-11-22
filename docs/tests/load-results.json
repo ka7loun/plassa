@@ -1,52 +1,97 @@
 {
   "base": "http://localhost:3100",
-  "at": "2026-11-22T02:16:29.563Z",
+  "at": "2026-11-22T03:49:09.179Z",
   "node": "v22.18.0",
   "rows": [
     {
-      "scenario": "Search spots (geo + availability)",
+      "scenario": "Search spots (geo + availability + ranking)",
       "connections": 50,
       "seconds": 20,
-      "requests": 8384,
-      "rps": 419,
-      "p50": 120,
-      "p90": 137,
-      "p99": 195,
+      "requests": 4875,
+      "rps": 244,
+      "p50": 203,
+      "p90": 228,
+      "p99": 287,
       "errors": 0,
       "non2xx": 0,
       "statusCodes": {
-        "200": 8384
+        "200": 4875
       }
     },
     {
-      "scenario": "Spot detail + 36h schedule",
+      "scenario": "Spot detail + 36h schedule + reviews",
       "connections": 50,
       "seconds": 20,
-      "requests": 8019,
-      "rps": 401,
-      "p50": 123,
-      "p90": 144,
-      "p99": 205,
+      "requests": 6287,
+      "rps": 314,
+      "p50": 155,
+      "p90": 177,
+      "p99": 201,
       "errors": 0,
       "non2xx": 0,
       "statusCodes": {
-        "200": 8019
+        "200": 6287
+      }
+    },
+    {
+      "scenario": "Top spots + host leaderboard",
+      "connections": 50,
+      "seconds": 20,
+      "requests": 6756,
+      "rps": 338,
+      "p50": 146,
+      "p90": 155,
+      "p99": 177,
+      "errors": 0,
+      "non2xx": 0,
+      "statusCodes": {
+        "200": 6756
+      }
+    },
+    {
+      "scenario": "Client dashboard (profile, points, badges)",
+      "connections": 50,
+      "seconds": 20,
+      "requests": 4741,
+      "rps": 237,
+      "p50": 210,
+      "p90": 222,
+      "p99": 243,
+      "errors": 0,
+      "non2xx": 0,
+      "statusCodes": {
+        "200": 4741
+      }
+    },
+    {
+      "scenario": "Renter dashboard (earnings, rank, reviews)",
+      "connections": 50,
+      "seconds": 20,
+      "requests": 4600,
+      "rps": 230,
+      "p50": 216,
+      "p90": 229,
+      "p99": 262,
+      "errors": 0,
+      "non2xx": 0,
+      "statusCodes": {
+        "200": 4600
       }
     },
     {
       "scenario": "Booking burst (360 slots, contended)",
       "connections": 20,
       "seconds": 20,
-      "requests": 6544,
-      "rps": 327,
-      "p50": 60,
-      "p90": 68,
-      "p99": 83,
+      "requests": 5716,
+      "rps": 286,
+      "p50": 69,
+      "p90": 75,
+      "p99": 85,
       "errors": 0,
-      "non2xx": 6184,
+      "non2xx": 5356,
       "statusCodes": {
         "201": 360,
-        "409": 6184
+        "409": 5356
       }
     }
   ]

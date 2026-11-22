@@ -1,20 +1,20 @@
 {
-  "at": "2026-11-22T02:18:10.180Z",
+  "at": "2026-11-22T03:50:02.069Z",
   "radiusM": 1800,
   "runsPerSize": 60,
   "results": [
     {
       "spots": 10000,
-      "p50ms": 0.91,
-      "p95ms": 1.32,
+      "p50ms": 0.92,
+      "p95ms": 1.27,
       "maxms": 1.69,
       "plan": "\"Index Name\":\"spots_earth_gist\", \"Index Name\":\"bookings_no_overlap\""
     },
     {
       "spots": 100000,
-      "p50ms": 29.24,
-      "p95ms": 31.35,
-      "maxms": 31.79,
+      "p50ms": 30.22,
+      "p95ms": 32.38,
+      "maxms": 32.62,
       "plan": "\"Index Name\":\"spots_earth_gist\", \"Index Name\":\"bookings_no_overlap\""
     }
   ]

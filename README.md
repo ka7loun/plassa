@@ -101,7 +101,7 @@ flowchart LR
 Full measurements and method: [docs/perf.md](docs/perf.md).
 
 - **No double booking at any scale.** `exclude using gist (spot_id with =, tstzrange(start_at, end_at) with &&)` on live bookings. Adding app servers cannot break it.
-- **Geo search stays fast.** At 10,000 spots the search query takes 0.9 ms (p50). At 100,000 spots, about 900 per search radius, it takes 29 ms.
+- **Geo search stays fast.** At 10,000 spots the search query takes 0.9 ms (p50). At 100,000 spots, about 900 per search radius, it takes 30 ms.
 - **The app tier is stateless.** Sessions are signed cookies, the database pool is small per instance and meant to sit behind a pooler, so it runs on serverless hosting.
 - **New cities are data.** `cities` and `zones` tables: a new city is a seed row and a map centre.
 - **Photos live next to the data.** Uploads are resized on the phone (1200 px JPEG), checked by their first bytes, capped at 1.5 MB and served with a one-year immutable cache header, so a CDN absorbs repeat views.
@@ -109,19 +109,21 @@ Full measurements and method: [docs/perf.md](docs/perf.md).
 
 ## Tests achieved
 
-All numbers are from real runs. The local runs used a laptop (i7-13650HX, 16 GB) with a production build and PostgreSQL 18.
+All numbers are from real runs on 22 November 2026, on the code that is live. The local runs used a laptop (i7-13650HX, 16 GB) with a production build and PostgreSQL 18. **Full QA report: [docs/qa.md](docs/qa.md)** (every test, the security checks, what is not covered yet).
 
 | Suite | What it checks | Result |
 |---|---|---|
 | Unit (Vitest) | Pricing and commission, peak rules, Tunis time and opening hours, check-in codes, payment providers, input validation, signed sessions, phone number formats, password hashing, Bayesian ranking and sorting, points, levels and badges, translations complete in all three languages | **52 / 52 pass** |
-| API integration (Vitest, real Postgres) | Search, booking, overlap refusal, opening hours, wallet approve / decline / forged reference / 15-minute expiry, cancel, privacy between drivers, host check-in, hosts cannot edit other hosts' spots, paused spots, city stats; sign-up and login (duplicate phone, same error for unknown phone and wrong password), booking your own spot, payment methods the host did not accept, reviews only after the stay and only once, rating totals, dashboards and rankings | **35 / 35 pass** |
-| Concurrency | 50 parallel requests for the same spot and hour | **1 confirmed, 49 refused** (`slot_taken`), about 150 ms |
-| End-to-end (Playwright, Pixel 7 viewport) | Driver books with cash and cancels; wallet decline then approve on a spot that accepts Flouci; Arabic RTL persists; a visitor signs up from a spot and comes back to book it, duplicate phone refused, login works; demo driver rates a stay from the profile; Top page; no horizontal scroll; host toggles a payment method, lists a spot with chosen methods and it becomes searchable; city view; API refuses bad and unauthenticated requests | **9 / 9 pass** |
-| Coverage (`src/lib`, `src/server`, `src/i18n`) | v8 coverage from the Vitest run | 80% lines, 77% statements, 67% branches |
-| Load: search | 50 connections, 20 s | **419 req/s**, p50 120 ms, p99 195 ms, 0 errors |
-| Load: spot detail | 50 connections, 20 s | **401 req/s**, p50 123 ms, p99 205 ms, 0 errors |
-| Load: booking burst | 20 connections fighting over 360 slots | **327 req/s**, p99 83 ms; exactly 360 created, 6,184 refused, **0 overlaps in the database** |
-| Search at scale | `EXPLAIN ANALYZE`, 60 runs per size | 10k spots: 0.9 ms p50. 100k spots: 29 ms p50 |
+| API integration (Vitest, real Postgres) | Search, booking, overlap refusal, opening hours, wallet approve / decline / forged reference / 15-minute expiry, cancel, privacy between drivers, host check-in, hosts cannot edit other hosts' spots, paused spots, city stats; sign-up and login (duplicate phone, same error for unknown phone and wrong password), booking your own spot, payment methods the host did not accept, reviews only after the stay and only once, rating totals, dashboards and rankings; photo uploads (real JPEG round-trip, disguised scripts and files over 1.5 MB refused, outside photo links refused) | **39 / 39 pass** |
+| Concurrency | 50 parallel requests for the same spot and hour | **1 confirmed, 49 refused** (`slot_taken`), 141 ms |
+| End-to-end (Playwright, Pixel 7 viewport) | Driver books with cash and cancels; wallet decline then approve on a spot that accepts Flouci; Arabic RTL persists; a visitor signs up from a spot and comes back to book it, duplicate phone refused, login works; demo driver rates a stay from the profile; Top page; no horizontal scroll; host toggles a payment method, uploads a real photo, lists a spot with chosen methods and it becomes searchable; city view; API refuses bad and unauthenticated requests | **9 / 9 pass** |
+| Coverage (`src/lib`, `src/server`, `src/i18n`) | v8 coverage from the Vitest run | 83% lines, 81% statements, 71% branches |
+| Load: search (geo + availability + ranking) | 50 connections, 20 s | **244 req/s**, p50 203 ms, p99 287 ms, 0 errors. Each search returns 29 spots on average, with photos and ratings ([why it changed](docs/qa.md#4-load-tests)) |
+| Load: spot page with reviews | 50 connections, 20 s | **314 req/s**, p50 155 ms, p99 201 ms, 0 errors |
+| Load: Top page | 50 connections, 20 s | **338 req/s**, p50 146 ms, p99 177 ms, 0 errors |
+| Load: client and renter dashboards | 50 connections, 20 s each | **237 and 230 req/s**, p99 243 and 262 ms, 0 errors |
+| Load: booking burst | 20 connections fighting over 360 slots | **286 req/s**, p99 85 ms; exactly 360 created, 5,356 refused, **0 overlaps in the database** |
+| Search at scale | `EXPLAIN ANALYZE`, 60 runs per size | 10k spots: 0.9 ms p50. 100k spots: 30 ms p50 |
 
 Raw results: [`docs/tests/load-results.json`](docs/tests/load-results.json), [`docs/tests/search-scale.json`](docs/tests/search-scale.json).
 
@@ -188,6 +190,7 @@ public/spots/       stock photos of the demo spots (see docs/photo-credits.md)
 tests/unit, tests/api, tests/e2e
 load/run.ts         HTTP load test
 scripts/            local Postgres, migrations, search benchmark
+docs/qa.md          QA report: every test, results, security checks, known gaps
 docs/perf.md        performance method and results
 ```
 
