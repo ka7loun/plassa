@@ -49,17 +49,17 @@ function PayInner() {
           {!b && !err && <Spinner />}
           {b && (
             <dl className="grid gap-2 text-sm">
-              <div className="flex justify-between">
-                <dt className="text-navy-50">{t.pay.merchant}</dt>
-                <dd className="font-semibold">Plassa · {b.spot?.title}</dd>
+              <div className="flex justify-between gap-4">
+                <dt className="shrink-0 text-navy-50">{t.pay.merchant}</dt>
+                <dd className="text-end font-semibold">Plassa · {b.spot?.title}</dd>
               </div>
-              <div className="flex justify-between">
+              <div className="flex justify-between gap-4">
                 <dt className="text-navy-50">{t.pay.amount}</dt>
                 <dd className="num text-xl font-bold text-blue" data-testid="pay-amount">
                   {formatTND(b.amountMillimes, locale)}
                 </dd>
               </div>
-              <div className="flex justify-between">
+              <div className="flex justify-between gap-4">
                 <dt className="text-navy-50">Ref</dt>
                 <dd className="num text-xs">{ref}</dd>
               </div>

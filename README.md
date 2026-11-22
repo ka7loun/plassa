@@ -8,7 +8,7 @@
   <a href="https://github.com/ka7loun/plassa/actions/workflows/ci.yml"><img src="https://github.com/ka7loun/plassa/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
 </p>
 
-**Live demo:** _URL added after deploy_. Open it on a phone. The landing page has three one-click demo logins (no password):
+**Live demo: [plassa.vercel.app](https://plassa.vercel.app)** Open it on a phone. The landing page has three one-click demo logins (no password):
 
 | Button | You are | Try |
 |---|---|---|
