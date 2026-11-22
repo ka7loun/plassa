@@ -22,7 +22,7 @@ const g = globalThis as unknown as { __plassaPool?: Pool };
 
 /** One pool per server instance (survives dev hot reloads). */
 export function db(): Pool {
-  if (!g.__plassaPool) g.__plassaPool = makePool(process.env.DATABASE_URL ?? LOCAL_DATABASE_URL);
+  if (!g.__plassaPool) g.__plassaPool = makePool(process.env.DATABASE_URL ?? process.env.POSTGRES_URL ?? LOCAL_DATABASE_URL);
   return g.__plassaPool;
 }
 
