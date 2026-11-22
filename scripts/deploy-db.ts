@@ -6,13 +6,18 @@ import "dotenv/config";
 import { migrate } from "./migrate";
 import { seed } from "../db/seed";
 import { createPool } from "../src/server/db";
-
-// Migrations go over a direct connection when the host offers one (Neon, Supabase).
-const url =
-  process.env.DATABASE_URL_UNPOOLED ?? process.env.POSTGRES_URL_NON_POOLING ?? process.env.DATABASE_URL ?? process.env.POSTGRES_URL;
+import { databaseEnvNames, directDatabaseUrl } from "../src/server/db-url";
 
 async function main() {
-  if (!url) throw new Error("No DATABASE_URL set. Connect a Postgres database to the Vercel project first.");
+  const url = directDatabaseUrl();
+  if (!url) {
+    const seen = databaseEnvNames();
+    throw new Error(
+      "No Postgres connection string found. Connect a database in the Vercel project (Storage tab), then redeploy.\n" +
+        `Database-related variables visible to this build: ${seen.length ? seen.join(", ") : "none"}`,
+    );
+  }
+  console.log(`using database host ${new URL(url).hostname}`);
   await migrate(url);
   const pool = createPool(url);
   try {
@@ -28,6 +33,6 @@ async function main() {
 }
 
 main().catch((e) => {
-  console.error(e);
+  console.error(e instanceof Error ? e.message : e);
   process.exit(1);
 });

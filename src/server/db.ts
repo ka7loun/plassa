@@ -1,4 +1,5 @@
 import { Pool, type PoolClient, type QueryResultRow } from "pg";
+import { databaseUrl } from "./db-url";
 
 export const LOCAL_DATABASE_URL = "postgres://plassa:plassa@localhost:54329/plassa";
 
@@ -22,7 +23,7 @@ const g = globalThis as unknown as { __plassaPool?: Pool };
 
 /** One pool per server instance (survives dev hot reloads). */
 export function db(): Pool {
-  if (!g.__plassaPool) g.__plassaPool = makePool(process.env.DATABASE_URL ?? process.env.POSTGRES_URL ?? LOCAL_DATABASE_URL);
+  if (!g.__plassaPool) g.__plassaPool = makePool(databaseUrl() ?? LOCAL_DATABASE_URL);
   return g.__plassaPool;
 }
 
