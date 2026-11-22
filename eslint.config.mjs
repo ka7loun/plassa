@@ -12,6 +12,12 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // generated output
+    "coverage/**",
+    "docs/tests/**",
+    "test-results/**",
+    "public/maplibre/**",
+    ".pgdata/**",
   ]),
 ]);
 

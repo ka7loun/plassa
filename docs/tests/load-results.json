@@ -1,0 +1,53 @@
+{
+  "base": "http://localhost:3100",
+  "at": "2026-11-22T02:16:29.563Z",
+  "node": "v22.18.0",
+  "rows": [
+    {
+      "scenario": "Search spots (geo + availability)",
+      "connections": 50,
+      "seconds": 20,
+      "requests": 8384,
+      "rps": 419,
+      "p50": 120,
+      "p90": 137,
+      "p99": 195,
+      "errors": 0,
+      "non2xx": 0,
+      "statusCodes": {
+        "200": 8384
+      }
+    },
+    {
+      "scenario": "Spot detail + 36h schedule",
+      "connections": 50,
+      "seconds": 20,
+      "requests": 8019,
+      "rps": 401,
+      "p50": 123,
+      "p90": 144,
+      "p99": 205,
+      "errors": 0,
+      "non2xx": 0,
+      "statusCodes": {
+        "200": 8019
+      }
+    },
+    {
+      "scenario": "Booking burst (360 slots, contended)",
+      "connections": 20,
+      "seconds": 20,
+      "requests": 6544,
+      "rps": 327,
+      "p50": 60,
+      "p90": 68,
+      "p99": 83,
+      "errors": 0,
+      "non2xx": 6184,
+      "statusCodes": {
+        "201": 360,
+        "409": 6184
+      }
+    }
+  ]
+}

@@ -1,26 +1,204 @@
 @import "tailwindcss";
+@import "maplibre-gl/dist/maplibre-gl.css";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
+/* Plassa v2 "Mediterranean Minimal" tokens (from the Challenge 01 brand sheet) */
+@theme {
+  --color-blue: #1e4bff; /* Medina Blue */
+  --color-blue-600: #1638cc;
+  --color-blue-50: #eef2ff;
+  --color-sand: #d4a574; /* Terracotta Sand */
+  --color-sand-100: #f3e6d6;
+  --color-stone: #f5f0e8; /* Ribat Stone */
+  --color-navy: #0f1a2e; /* Deep Navy */
+  --color-navy-70: #3d4658;
+  --color-navy-50: #6b7280;
+  --color-line: #e6dfd3;
+  --color-ok: #127a4b;
+  --color-ok-50: #e6f4ec;
+  --color-warn: #a15c07;
+  --color-err: #b42318;
+  --color-err-50: #fdecea;
+  --font-sans: var(--font-dm), var(--font-readex), system-ui, sans-serif;
+  --font-ar: var(--font-readex), system-ui, sans-serif;
+  --radius-card: 18px;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+html {
+  -webkit-tap-highlight-color: transparent;
+  accent-color: var(--color-blue); /* native checkboxes / radios in brand blue */
+  caret-color: var(--color-blue);
+  scrollbar-color: #cfc6b6 transparent;
 }
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+::selection {
+  background: rgb(30 75 255 / 0.18);
+  color: var(--color-navy);
+}
+:focus-visible {
+  outline: 2px solid var(--color-blue);
+  outline-offset: 2px;
+  border-radius: 8px;
+}
+a {
+  text-underline-offset: 3px;
+}
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }
-
+.skeleton {
+  background: linear-gradient(90deg, #ece6db 0%, #f6f2ea 50%, #ece6db 100%);
+  background-size: 200% 100%;
+  animation: shimmer 1.2s ease-in-out infinite;
+  border-radius: 12px;
+}
+@keyframes shimmer {
+  to {
+    background-position: -200% 0;
+  }
+}
+.section-title {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--color-navy);
+}
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--color-stone);
+  color: var(--color-navy);
+  font-family: var(--font-sans);
+}
+html[lang="ar"] body {
+  font-family: var(--font-ar);
+}
+
+/* tabular numbers for prices, codes and stats */
+.num {
+  font-variant-numeric: tabular-nums;
+}
+
+.card {
+  background: white;
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-card);
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  min-height: 2.75rem;
+  border-radius: 14px;
+  padding: 0.8rem 1.1rem;
+  font-weight: 600;
+  transition: background-color 0.15s, transform 0.05s, opacity 0.15s;
+}
+.btn:active {
+  transform: scale(0.98);
+}
+.btn:disabled {
+  opacity: 0.5;
+  pointer-events: none;
+}
+.btn-primary {
+  background: var(--color-blue);
+  color: white;
+}
+.btn-primary:hover {
+  background: var(--color-blue-600);
+}
+.btn-ghost {
+  background: white;
+  border: 1px solid var(--color-line);
+  color: var(--color-navy);
+}
+.btn-ghost:hover {
+  background: var(--color-blue-50);
+}
+.btn-danger {
+  background: white;
+  border: 1px solid #f1c3be;
+  color: var(--color-err);
+}
+
+.input {
+  width: 100%;
+  border: 1px solid var(--color-line);
+  background: white;
+  border-radius: 12px;
+  padding: 0.65rem 0.8rem;
+  outline: none;
+}
+.input:focus {
+  border-color: var(--color-blue);
+  box-shadow: 0 0 0 3px rgb(30 75 255 / 0.15);
+}
+.label {
+  display: block;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--color-navy-70);
+  margin-bottom: 0.3rem;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-height: 2.75rem; /* 44px touch target */
+  border-radius: 999px;
+  padding: 0.4rem 0.9rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  border: 1px solid var(--color-line);
+  background: white;
+  white-space: nowrap;
+  transition: background-color 0.15s ease-out, border-color 0.15s ease-out;
+}
+.chip:hover {
+  border-color: #c9bfae;
+}
+.chip[aria-pressed="true"] {
+  background: var(--color-navy);
+  border-color: var(--color-navy);
+  color: white;
+}
+
+/* price pin on the map */
+.pin {
+  transform: translateY(-4px);
+  border-radius: 999px;
+  padding: 3px 9px;
+  font: 700 12px/1.4 var(--font-sans);
+  background: var(--color-blue);
+  color: white;
+  border: 2px solid white;
+  box-shadow: 0 2px 6px rgb(15 26 46 / 0.25);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.pin.off {
+  background: #b9b3a8;
+}
+.pin.sel {
+  background: var(--color-navy);
+  transform: translateY(-4px) scale(1.12);
+  z-index: 5;
+}
+.pin-me {
+  width: 16px;
+  height: 16px;
+  border-radius: 999px;
+  background: var(--color-sand);
+  border: 3px solid white;
+  box-shadow: 0 0 0 6px rgb(212 165 116 / 0.3);
+}
+
+.maplibregl-ctrl-attrib {
+  font-size: 10px;
 }
