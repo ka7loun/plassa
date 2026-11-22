@@ -51,7 +51,7 @@ Two app servers, ten app servers, or a retry storm cannot create a double bookin
 | No double booking at any scale | Exclusion constraint above, tested with 50 parallel requests and a 6,544-request burst. |
 | Geo search stays fast as supply grows | `earth_box` and a GiST index: under 2 ms at 10k spots, about 30 ms at 100k on a laptop. |
 | Serverless-friendly database use | Small pool per instance (`DB_POOL_MAX`, default 5 when hosted), meant to sit behind the provider's pooler (Neon / Supabase PgBouncer). |
-| Multi-city rollout is data, not code | `cities` and `zones` tables. Monastir is already seeded beside Sousse. A new city is a seed row and a map centre. |
+| Multi-city rollout is data, not code | `cities` and `zones` tables. A new city is a seed row and a map centre. |
 | Payments can change without a rewrite | `PaymentProvider` interface (`src/lib/payments.ts`). Cash and a simulated wallet today; Flouci or D17 become a third class. |
 | Abandoned wallet payments do not block spots | Pending bookings hold the slot for 15 minutes, then expire automatically. |
 

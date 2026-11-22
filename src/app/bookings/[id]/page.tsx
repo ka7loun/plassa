@@ -5,9 +5,10 @@ import { useParams, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
 import { api, errorText, useApp } from "@/components/AppProvider";
 import { MapView } from "@/components/MapView";
-import { Alert, Page, RequireRole, Spinner } from "@/components/Shell";
+import { Alert, Page, RequireUser, Spinner } from "@/components/Shell";
 import { StatusBadge } from "@/components/StatusBadge";
 import { Icon } from "@/components/Icon";
+import { ReviewForm } from "@/components/ReviewForm";
 import { fmtRange } from "@/lib/format";
 import { formatTND } from "@/lib/pricing";
 import type { BookingDTO } from "@/server/bookings";
@@ -15,7 +16,7 @@ import type { BookingDTO } from "@/server/bookings";
 function BookingInner() {
   const { id } = useParams<{ id: string }>();
   const isNew = useSearchParams().get("new") === "1";
-  const { t, f, locale } = useApp();
+  const { t, f, locale, user } = useApp();
   const [b, setB] = useState<BookingDTO | null>(null);
   const [err, setErr] = useState<unknown>(null);
   const [msg, setMsg] = useState<string | null>(null);
@@ -47,6 +48,8 @@ function BookingInner() {
   const waze = `https://waze.com/ul?ll=${s.lat},${s.lng}&navigate=yes`;
   const share = `https://wa.me/?text=${encodeURIComponent(`Plassa · ${s.title} · ${fmtRange(b.start, b.end, locale)} · ${gmaps}`)}`;
   const live = b.status === "confirmed" || b.status === "pending_payment";
+  const stayed = b.status === "checked_in" || (b.status === "confirmed" && new Date(b.end) <= new Date());
+  const canRate = stayed && b.driverId === user?.id;
 
   return (
     <div className="grid gap-4">
@@ -83,6 +86,18 @@ function BookingInner() {
                 </a>
               )}
             </p>
+          )}
+        </div>
+      )}
+
+      {canRate && (
+        <div className="card p-4">
+          {b.myRating ? (
+            <p className="text-sm font-semibold text-ok" data-testid="rated">
+              {f(t.booking.rated, { r: b.myRating })}
+            </p>
+          ) : (
+            <ReviewForm bookingId={b.id} onDone={(r) => setB({ ...b, myRating: r })} />
           )}
         </div>
       )}
@@ -126,11 +141,11 @@ function BookingInner() {
 export default function BookingPage() {
   return (
     <Page>
-      <RequireRole role="driver">
+      <RequireUser>
         <Suspense fallback={<Spinner />}>
           <BookingInner />
         </Suspense>
-      </RequireRole>
+      </RequireUser>
     </Page>
   );
 }

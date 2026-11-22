@@ -8,7 +8,14 @@ export type ErrorCode =
   | "in_the_past"
   | "not_cancellable"
   | "payment_failed"
-  | "rate_limited";
+  | "rate_limited"
+  | "method_not_accepted"
+  | "own_spot"
+  | "phone_taken"
+  | "bad_credentials"
+  | "not_reviewable"
+  | "already_reviewed"
+  | "too_large";
 
 const STATUS: Record<ErrorCode, number> = {
   bad_request: 400,
@@ -21,6 +28,13 @@ const STATUS: Record<ErrorCode, number> = {
   not_cancellable: 409,
   payment_failed: 402,
   rate_limited: 429,
+  method_not_accepted: 422,
+  own_spot: 422,
+  phone_taken: 409,
+  bad_credentials: 401,
+  not_reviewable: 422,
+  already_reviewed: 409,
+  too_large: 413,
 };
 
 export class AppError extends Error {

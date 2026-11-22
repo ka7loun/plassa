@@ -1,16 +1,16 @@
 import { db } from "@/server/db";
 import { createBooking, listDriverBookings } from "@/server/bookings";
-import { handler, json, parseBody, rateLimit, requireRole } from "@/server/http";
+import { handler, json, parseBody, rateLimit, requireUser } from "@/server/http";
 import { createBookingBody } from "@/lib/validation";
 import type { PaymentMethod } from "@/lib/payments";
 
 export const GET = handler(async () => {
-  const s = await requireRole("driver");
+  const s = await requireUser();
   return json({ bookings: await listDriverBookings(db(), s.userId) });
 });
 
 export const POST = handler(async (req: Request) => {
-  const s = await requireRole("driver");
+  const s = await requireUser();
   rateLimit(`book:${s.userId}`, Number(process.env.BOOKING_RATE_PER_MIN ?? 30));
   const body = await parseBody(req, createBookingBody);
   const result = await createBooking(db(), s.userId, {

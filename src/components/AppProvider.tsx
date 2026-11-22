@@ -3,7 +3,10 @@
 import { createContext, useCallback, useContext, useMemo, useState } from "react";
 import { DICTS, dirOf, fill, LOCALE_COOKIE, type Dict, type Locale } from "@/i18n";
 
-export type Role = "driver" | "host" | "admin";
+/** Every account can book spots and rent out its own; "admin" is the city operator. */
+export type Role = "user" | "admin";
+/** The three one-click demo accounts. */
+export type Persona = "driver" | "host" | "admin";
 export interface User {
   id: string;
   role: Role;
@@ -17,7 +20,9 @@ interface Ctx {
   setLocale: (l: Locale) => void;
   user: User | null;
   setUser: (u: User | null) => void;
-  demoLogin: (role: Role) => Promise<User>;
+  demoLogin: (persona: Persona) => Promise<User>;
+  login: (phone: string, password: string) => Promise<User>;
+  signup: (name: string, phone: string, password: string) => Promise<User>;
   logout: () => Promise<void>;
 }
 
@@ -35,10 +40,20 @@ export function AppProvider({ initialLocale, initialUser, children }: { initialL
     document.title = DICTS[l].meta.title;
   }, []);
 
-  const demoLogin = useCallback(async (role: Role) => {
-    const res = await fetch("/api/auth/demo", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ role }) });
-    if (!res.ok) throw new Error("login failed");
-    const { user } = (await res.json()) as { user: User };
+  const demoLogin = useCallback(async (persona: Persona) => {
+    const { user } = await api<{ user: User }>("/api/auth/demo", { method: "POST", json: { role: persona } });
+    setUser(user);
+    return user;
+  }, []);
+
+  const login = useCallback(async (phone: string, password: string) => {
+    const { user } = await api<{ user: User }>("/api/auth/login", { method: "POST", json: { phone, password } });
+    setUser(user);
+    return user;
+  }, []);
+
+  const signup = useCallback(async (name: string, phone: string, password: string) => {
+    const { user } = await api<{ user: User }>("/api/auth/signup", { method: "POST", json: { name, phone, password } });
     setUser(user);
     return user;
   }, []);
@@ -49,8 +64,8 @@ export function AppProvider({ initialLocale, initialUser, children }: { initialL
   }, []);
 
   const value = useMemo<Ctx>(
-    () => ({ locale, t: DICTS[locale], f: fill, setLocale, user, setUser, demoLogin, logout }),
-    [locale, setLocale, user, demoLogin, logout],
+    () => ({ locale, t: DICTS[locale], f: fill, setLocale, user, setUser, demoLogin, login, signup, logout }),
+    [locale, setLocale, user, demoLogin, login, signup, logout],
   );
   return <AppCtx.Provider value={value}>{children}</AppCtx.Provider>;
 }

@@ -5,12 +5,15 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api, errorText, useApp } from "@/components/AppProvider";
 import { MapView, type MapMarker } from "@/components/MapView";
 import { Alert, Page } from "@/components/Shell";
-import { SpotThumb } from "@/components/SpotThumb";
+import { RatingTag, SpotPhoto } from "@/components/SpotThumb";
 import { Icon } from "@/components/Icon";
 import { defaultWhen, WhenPicker, whenToRange, type When } from "@/components/WhenPicker";
 import { fmtDistance } from "@/lib/format";
 import { formatTND } from "@/lib/pricing";
+import type { SortKey } from "@/lib/ranking";
 import type { SpotDTO } from "@/server/spots";
+
+const SORTS: SortKey[] = ["recommended", "distance", "price", "rating"];
 
 const PLACES: { id: string; fr: string; ar: string; en: string; lng: number; lat: number; zoom: number }[] = [
   { id: "babbhar", fr: "Bab Bhar", ar: "باب البحر", en: "Bab Bhar", lng: 10.6375, lat: 35.8287, zoom: 15.5 },
@@ -19,7 +22,6 @@ const PLACES: { id: string; fr: string; ar: string; en: string; lng: number; lat
   { id: "sahloul", fr: "Hôpital Sahloul", ar: "سبيطار سهلول", en: "Sahloul hospital", lng: 10.5935, lat: 35.8370, zoom: 15 },
   { id: "khezama", fr: "Khezama", ar: "خزامة", en: "Khezama", lng: 10.6075, lat: 35.8535, zoom: 15 },
   { id: "kantaoui", fr: "Kantaoui", ar: "القنطاوي", en: "Kantaoui", lng: 10.5930, lat: 35.8898, zoom: 15 },
-  { id: "monastir", fr: "Monastir", ar: "المنستير", en: "Monastir", lng: 10.8250, lat: 35.7778, zoom: 15 },
 ];
 
 interface SearchResult {
@@ -38,13 +40,14 @@ export default function FindPage() {
   const [result, setResult] = useState<{ key: string; data?: SearchResult; err?: unknown } | null>(null);
   const [nonce, setNonce] = useState(0);
   const [selected, setSelected] = useState<string | null>(null);
+  const [sort, setSort] = useState<SortKey>("recommended");
   const debounce = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const range = useMemo(() => whenToRange(when), [when]);
 
   const qs = useMemo(
-    () => new URLSearchParams({ lat: String(searchAt[1]), lng: String(searchAt[0]), radius: "1800", start: range.start.toISOString(), end: range.end.toISOString() }).toString(),
-    [searchAt, range],
+    () => new URLSearchParams({ lat: String(searchAt[1]), lng: String(searchAt[0]), radius: "1800", start: range.start.toISOString(), end: range.end.toISOString(), sort }).toString(),
+    [searchAt, range, sort],
   );
   const key = `${qs}#${nonce}`;
 
@@ -71,11 +74,8 @@ export default function FindPage() {
     }, 450);
   }, []);
 
-  const spots = useMemo(() => {
-    const s = [...(data?.spots ?? [])];
-    s.sort((a, b) => Number(b.available) - Number(a.available) || (a.distanceM ?? 0) - (b.distanceM ?? 0));
-    return s;
-  }, [data]);
+  // the server already ranks the list (free spots first, then the chosen sort)
+  const spots = useMemo(() => data?.spots ?? [], [data]);
 
   const markers: MapMarker[] = useMemo(
     () => spots.map((s) => ({ id: s.id, lat: s.lat, lng: s.lng, label: s.available ? formatTND(s.quote!.totalMillimes, locale) : "—", off: !s.available, selected: s.id === selected })),
@@ -122,6 +122,17 @@ export default function FindPage() {
             ))}
           </div>
 
+          <div className="flex items-center gap-2 overflow-x-auto pb-1" role="group" aria-label={t.find.sort}>
+            {SORTS.map((k) => (
+              <button key={k} className="chip" aria-pressed={sort === k} onClick={() => setSort(k)} data-testid={`sort-${k}`}>
+                {t.find.sortBy[k]}
+              </button>
+            ))}
+            <Link href="/top" className="chip ms-auto shrink-0" data-testid="top-link">
+              <Icon name="trophy" size={16} /> {t.find.topLink}
+            </Link>
+          </div>
+
           <div className="md:hidden">
             <MapView center={center} zoom={place.zoom} markers={markers} me={me} onMarkerClick={setSelected} onMoveEnd={onMoveEnd} className="h-64" testId="map" />
           </div>
@@ -160,9 +171,12 @@ export default function FindPage() {
                   data-testid="spot-card"
                   data-available={s.available ? "1" : "0"}
                 >
-                  <SpotThumb type={s.spotType} className="h-16 w-16 shrink-0" />
+                  <SpotPhoto photos={s.photos} type={s.spotType} className="h-16 w-16 shrink-0" />
                   <div className="min-w-0 flex-1">
-                    <p className="truncate font-semibold">{s.title}</p>
+                    <div className="flex items-center gap-2">
+                      <p className="min-w-0 truncate font-semibold">{s.title}</p>
+                      <RatingTag avg={s.rating.avg} count={s.rating.count} newLabel={t.find.newSpot} className="shrink-0" />
+                    </div>
                     <p className="truncate text-xs text-navy-50">{t.spot.type[s.spotType as keyof typeof t.spot.type]}, {fmtDistance(s.distanceM, locale)}</p>
                     <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-[11px] font-semibold">
                       {s.available ? (

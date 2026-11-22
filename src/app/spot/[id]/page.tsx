@@ -5,22 +5,50 @@ import { Suspense, useEffect, useMemo, useState } from "react";
 import { api, ApiError, errorText, useApp } from "@/components/AppProvider";
 import { MapView } from "@/components/MapView";
 import { Alert, Page, Spinner } from "@/components/Shell";
-import { SpotThumb } from "@/components/SpotThumb";
+import { RatingTag, SpotThumb } from "@/components/SpotThumb";
 import { Icon } from "@/components/Icon";
 import { WhenPicker, whenToRange, type When } from "@/components/WhenPicker";
-import { fmtMinutes, fmtRange } from "@/lib/format";
+import { fmtDay, fmtMinutes, fmtRange } from "@/lib/format";
 import { formatTND } from "@/lib/pricing";
 import { suggestedStart, tunisDateString, tunisTimeString } from "@/lib/time";
 import type { PaymentMethod } from "@/lib/payments";
-import type { SpotDTO } from "@/server/spots";
+import type { ReviewDTO, SpotDTO } from "@/server/spots";
 
-const METHODS: PaymentMethod[] = ["cash", "d17", "flouci", "card"];
+function Stars({ n }: { n: number }) {
+  return (
+    <span className="text-sm tracking-tight text-sand" aria-label={`${n}/5`}>
+      {"★★★★★".slice(0, n)}
+      <span className="text-line">{"★★★★★".slice(n)}</span>
+    </span>
+  );
+}
+
+function Gallery({ photos, type, title }: { photos: string[]; type: string; title: string }) {
+  const [i, setI] = useState(0);
+  if (!photos.length) return <SpotThumb type={type} className="aspect-[4/3] w-full" />;
+  return (
+    <div className="grid gap-2" data-testid="gallery">
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src={photos[i]} alt={title} className="aspect-[4/3] w-full rounded-2xl bg-blue-50 object-cover" />
+      {photos.length > 1 && (
+        <div className="flex gap-2 overflow-x-auto">
+          {photos.map((p, k) => (
+            <button key={p} onClick={() => setI(k)} aria-pressed={i === k} aria-label={`${k + 1}/${photos.length}`} className={`shrink-0 rounded-lg border-2 ${i === k ? "border-blue" : "border-transparent"}`}>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={p.startsWith("/spots/") ? p.replace(/.jpg$/, "-sm.jpg") : p} alt="" className="h-14 w-20 rounded-md object-cover" />
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 function SpotInner() {
   const { id } = useParams<{ id: string }>();
   const sp = useSearchParams();
   const router = useRouter();
-  const { t, f, locale, user, demoLogin } = useApp();
+  const { t, f, locale, user } = useApp();
 
   const [when, setWhen] = useState<When>(() => {
     const s = sp.get("start");
@@ -31,16 +59,21 @@ function SpotInner() {
   });
   const range = useMemo(() => whenToRange(when), [when]);
   const [spot, setSpot] = useState<SpotDTO | null>(null);
+  const [reviews, setReviews] = useState<ReviewDTO[]>([]);
   const [loadErr, setLoadErr] = useState<unknown>(null);
-  const [method, setMethod] = useState<PaymentMethod>("cash");
+  const [picked, setPicked] = useState<PaymentMethod | null>(null);
   const [plate, setPlate] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<unknown>(null);
 
   useEffect(() => {
     let live = true;
-    api<{ spot: SpotDTO }>(`/api/spots/${id}?start=${encodeURIComponent(range.start.toISOString())}&end=${encodeURIComponent(range.end.toISOString())}`)
-      .then((r) => live && setSpot(r.spot))
+    api<{ spot: SpotDTO; reviews: ReviewDTO[] }>(`/api/spots/${id}?start=${encodeURIComponent(range.start.toISOString())}&end=${encodeURIComponent(range.end.toISOString())}`)
+      .then((r) => {
+        if (!live) return;
+        setSpot(r.spot);
+        setReviews(r.reviews);
+      })
       .catch((e) => live && setLoadErr(e));
     return () => {
       live = false;
@@ -51,7 +84,10 @@ function SpotInner() {
     setBusy(true);
     setErr(null);
     try {
-      if (user?.role !== "driver") await demoLogin("driver");
+      if (!user) {
+        router.push(`/login?next=${encodeURIComponent(`/spot/${id}?start=${range.start.toISOString()}&end=${range.end.toISOString()}`)}`);
+        return;
+      }
       const r = await api<{ booking: { id: string }; redirectUrl: string | null }>("/api/bookings", {
         method: "POST",
         json: { spotId: id, start: range.start.toISOString(), end: range.end.toISOString(), paymentMethod: method, plate: plate || undefined },
@@ -68,6 +104,10 @@ function SpotInner() {
   if (!spot) return <Spinner label={t.common.loading} />;
 
   const q = spot.quote!;
+  // the host decides which payment methods drivers see on this spot
+  const methods = spot.paymentMethods;
+  const method = picked && methods.includes(picked) ? picked : methods[0];
+  const own = user?.id === spot.hostId;
   const typeLabel = t.spot.type[spot.spotType as keyof typeof t.spot.type];
   const hours = spot.availStartMin === 0 && spot.availEndMin === 1440 ? t.spot.allDay : `${fmtMinutes(spot.availStartMin)}–${fmtMinutes(spot.availEndMin)}`;
 
@@ -77,12 +117,14 @@ function SpotInner() {
         <Icon name="back" size={18} className="rtl:rotate-180" /> {t.common.back}
       </button>
 
+      <Gallery photos={spot.photos} type={spot.spotType} title={spot.title} />
+
       <div className="card flex gap-4 p-4">
-        <SpotThumb type={spot.spotType} className="h-20 w-20 shrink-0" />
         <div className="min-w-0">
           <h1 className="text-xl font-bold leading-tight" data-testid="spot-title">
             {spot.title}
           </h1>
+          <RatingTag avg={spot.rating.avg} count={spot.rating.count} newLabel={t.find.newSpot} className="mt-1" />
           <p className="text-sm text-navy-50">{spot.address}</p>
           <p className="mt-1 text-xs font-semibold text-navy-70">
             {typeLabel}
@@ -113,6 +155,29 @@ function SpotInner() {
           <p className="font-semibold">{spot.gardienName ?? "—"}</p>
         </div>
       </div>
+
+      <section className="card grid gap-3 p-4" data-testid="reviews">
+        <h2 className="flex items-center justify-between font-semibold">
+          {t.spot.reviewsTitle}
+          {spot.rating.avg !== null && <span className="num text-sm text-navy-70">{f(t.spot.ratingOutOf, { avg: spot.rating.avg.toFixed(1) })}</span>}
+        </h2>
+        {reviews.length === 0 ? (
+          <p className="text-sm text-navy-50">{t.spot.noReviews}</p>
+        ) : (
+          <ul className="grid gap-3">
+            {reviews.map((r) => (
+              <li key={r.id} className="grid gap-0.5 border-t border-line pt-3 first:border-0 first:pt-0">
+                <p className="flex items-center gap-2 text-sm">
+                  <Stars n={r.rating} />
+                  <span className="font-semibold">{r.driverName}</span>
+                  <span className="num ms-auto text-xs text-navy-50">{fmtDay(r.createdAt, locale)}</span>
+                </p>
+                {r.comment && <p className="text-sm text-navy-70">{r.comment}</p>}
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
 
       <MapView center={[spot.lng, spot.lat]} zoom={16} markers={[{ id: spot.id, lat: spot.lat, lng: spot.lng, label: "P", selected: true }]} className="h-44" />
 
@@ -154,11 +219,10 @@ function SpotInner() {
         <fieldset>
           <legend className="label">{t.spot.pay}</legend>
           <div className="grid grid-cols-2 gap-2">
-            {METHODS.map((m) => (
+            {methods.map((m) => (
               <label key={m} className={`cursor-pointer rounded-xl border p-3 text-sm ${method === m ? "border-blue bg-blue-50" : "border-line bg-white"}`}>
-                <input type="radio" name="method" value={m} checked={method === m} onChange={() => setMethod(m)} className="sr-only" data-testid={`pay-${m}`} />
+                <input type="radio" name="method" value={m} checked={method === m} onChange={() => setPicked(m)} className="sr-only" data-testid={`pay-${m}`} />
                 <span className="block font-semibold">{t.spot.method[m]}</span>
-                <span className="block text-xs text-navy-50">{t.spot.methodHint[m]}</span>
               </label>
             ))}
           </div>
@@ -167,10 +231,10 @@ function SpotInner() {
         {err ? <Alert>{err instanceof ApiError && err.code === "slot_taken" ? t.spot.taken : errorText(t, err)}</Alert> : null}
         {!spot.available && !err && <Alert kind="info">{spot.unavailableReason === "closed" ? t.spot.closedMsg : t.spot.unavailable}</Alert>}
 
-        <button className="btn btn-primary w-full py-4 text-lg" disabled={busy || !spot.available} onClick={book} data-testid="book">
-          {spot.available ? f(t.spot.book, { v: formatTND(q.totalMillimes, locale) }) : t.spot.unavailable}
+        {own && <Alert kind="info">{t.spot.ownSpot}</Alert>}
+        <button className="btn btn-primary w-full py-4 text-lg" disabled={busy || !spot.available || own} onClick={book} data-testid="book">
+          {!spot.available ? t.spot.unavailable : user ? f(t.spot.book, { v: formatTND(q.totalMillimes, locale) }) : t.spot.signInToBook}
         </button>
-        {user?.role !== "driver" && <p className="text-center text-xs text-navy-50">{t.spot.signIn}</p>}
       </section>
     </div>
   );

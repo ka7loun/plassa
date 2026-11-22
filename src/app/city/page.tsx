@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { api, errorText, useApp } from "@/components/AppProvider";
 import { MapView } from "@/components/MapView";
-import { Alert, Page, RequireRole } from "@/components/Shell";
+import { Alert, Page, RequireUser } from "@/components/Shell";
 import { fmtNumber } from "@/lib/format";
 import { formatTND } from "@/lib/pricing";
 
@@ -48,18 +48,16 @@ function Bars({ values, labels, label, highlight }: { values: number[]; labels: 
 
 function Dashboard() {
   const { t, f, locale } = useApp();
-  const [city, setCity] = useState<"sousse" | "monastir">("sousse");
-  const [res, setRes] = useState<{ city: string; stats: Stats } | null>(null);
+  const [s, setStats] = useState<Stats | null>(null);
   const [err, setErr] = useState<unknown>(null);
 
   useEffect(() => {
-    api<Stats>(`/api/admin/stats?city=${city}`).then((stats) => setRes({ city, stats }), setErr);
-  }, [city]);
+    api<Stats>("/api/admin/stats").then(setStats, setErr);
+  }, []);
 
   if (err) return <Alert>{errorText(t, err)}</Alert>;
-  const s = res?.city === city ? res.stats : null;
 
-  const center: [number, number] = city === "sousse" ? [10.622, 35.848] : [10.825, 35.778];
+  const center: [number, number] = [10.622, 35.848];
   const peakHour = s ? s.hourly.reduce((a, b) => (b.searches > a.searches ? b : a)).hour : -1;
 
   return (
@@ -68,13 +66,6 @@ function Dashboard() {
         <div>
           <h1 className="text-2xl font-bold">{t.city.title}</h1>
           <p className="text-sm text-navy-50">{t.city.sub}</p>
-        </div>
-        <div className="flex gap-2" role="group">
-          {(["sousse", "monastir"] as const).map((c) => (
-            <button key={c} className="chip" aria-pressed={city === c} onClick={() => setCity(c)}>
-              {c === "sousse" ? (locale === "ar" ? "سوسة" : "Sousse") : locale === "ar" ? "المنستير" : "Monastir"}
-            </button>
-          ))}
         </div>
       </div>
 
@@ -110,7 +101,7 @@ function Dashboard() {
           <section className="grid gap-4 lg:grid-cols-[1.2fr_1fr]">
             <div className="grid gap-2">
               <h2 className="section-title">{t.city.heat}</h2>
-              <MapView center={center} zoom={city === "sousse" ? 12.6 : 14} heat={s.heat} className="h-80" testId="heat-map" />
+              <MapView center={center} zoom={12.6} heat={s.heat} className="h-80" testId="heat-map" />
             </div>
             <div className="grid content-start gap-2">
               <h2 className="section-title">{t.city.zones}</h2>
@@ -163,9 +154,9 @@ function Dashboard() {
 export default function CityPage() {
   return (
     <Page wide>
-      <RequireRole role="admin">
+      <RequireUser admin>
         <Dashboard />
-      </RequireRole>
+      </RequireUser>
     </Page>
   );
 }

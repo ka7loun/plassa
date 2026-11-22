@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { ZodError, type ZodType } from "zod";
-import { getSession, type Role, type Session } from "./auth";
+import { getSession, SESSION_COOKIE, sessionCookieOptions, signSession, type Role, type Session } from "./auth";
 import { AppError } from "./errors";
 
 export function json(data: unknown, status = 200) {
@@ -21,6 +21,16 @@ export async function requireRole(...roles: Role[]): Promise<Session> {
   if (!s) throw new AppError("unauthorized", "please sign in");
   if (roles.length && !roles.includes(s.role)) throw new AppError("forbidden", `this needs the ${roles.join(" or ")} role`);
   return s;
+}
+
+/** Any signed-in account: the same person can book spots and rent out their own. */
+export const requireUser = () => requireRole("user");
+export const requireAdmin = () => requireRole("admin");
+
+/** Signs the session cookie onto a response. */
+export async function withSession(res: NextResponse, s: Session) {
+  res.cookies.set(SESSION_COOKIE, await signSession(s), sessionCookieOptions);
+  return res;
 }
 
 export async function parseBody<T>(req: Request, schema: ZodType<T>): Promise<T> {

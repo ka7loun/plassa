@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { api, errorText, useApp } from "@/components/AppProvider";
-import { Alert, Page, RequireRole, Spinner } from "@/components/Shell";
+import { Alert, Page, RequireUser, Spinner } from "@/components/Shell";
 import { StatusBadge } from "@/components/StatusBadge";
 import { fmtRange } from "@/lib/format";
 import { formatTND } from "@/lib/pricing";
@@ -67,9 +67,9 @@ function List() {
 export default function BookingsPage() {
   return (
     <Page>
-      <RequireRole role="driver">
+      <RequireUser>
         <List />
-      </RequireRole>
+      </RequireUser>
     </Page>
   );
 }

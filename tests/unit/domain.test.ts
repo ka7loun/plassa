@@ -70,11 +70,11 @@ describe("input validation", () => {
 
 describe("sessions", () => {
   it("round-trips a signed session", async () => {
-    const token = await signSession({ userId: "u1", role: "host", name: "Salma" });
-    expect(await verifySession(token)).toEqual({ userId: "u1", role: "host", name: "Salma" });
+    const token = await signSession({ userId: "u1", role: "user", name: "Salma" });
+    expect(await verifySession(token)).toEqual({ userId: "u1", role: "user", name: "Salma" });
   });
   it("rejects tampered or missing tokens", async () => {
-    const token = await signSession({ userId: "u1", role: "driver", name: "x" });
+    const token = await signSession({ userId: "u1", role: "user", name: "x" });
     const [h, p, s] = token.split(".");
     const forged = Buffer.from(JSON.stringify({ ...JSON.parse(Buffer.from(p, "base64url").toString()), role: "admin" })).toString("base64url");
     expect(await verifySession(`${h}.${forged}.${s}`)).toBeNull();

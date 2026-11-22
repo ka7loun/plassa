@@ -1,9 +1,10 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
-import { useApp, type Role } from "@/components/AppProvider";
-import { LangSwitch, Logo } from "@/components/Shell";
+import { useApp, type Persona } from "@/components/AppProvider";
+import { DemoButtons, LangSwitch, Logo } from "@/components/Shell";
 import { Icon } from "@/components/Icon";
 import { MapView, type MapMarker } from "@/components/MapView";
 import { formatTND } from "@/lib/pricing";
@@ -15,9 +16,8 @@ const BAB_BHAR: [number, number] = [10.6372, 35.8287];
 
 
 export default function Landing() {
-  const { t, demoLogin, locale } = useApp();
+  const { t, locale, user } = useApp();
   const router = useRouter();
-  const [busy, setBusy] = useState<Role | null>(null);
   const [live, setLive] = useState<SpotDTO[]>([]);
   const [heroAt] = useState(() => suggestedStart());
 
@@ -37,21 +37,7 @@ export default function Landing() {
   );
   const freeNow = live.filter((s) => s.available).length;
 
-  const go = async (role: Role, href: string) => {
-    setBusy(role);
-    try {
-      await demoLogin(role);
-      router.push(href);
-    } finally {
-      setBusy(null);
-    }
-  };
-
-  const entries: { role: Role; href: string; label: string; hint: string; primary?: boolean }[] = [
-    { role: "driver", href: "/find", label: t.landing.asDriver, hint: t.landing.asDriverHint, primary: true },
-    { role: "host", href: "/host", label: t.landing.asHost, hint: t.landing.asHostHint },
-    { role: "admin", href: "/city", label: t.landing.asCity, hint: t.landing.asCityHint },
-  ];
+  const after: Record<Persona, string> = { driver: "/find", host: "/host", admin: "/city" };
 
   return (
     <main className="min-h-dvh">
@@ -66,21 +52,39 @@ export default function Landing() {
           <p className="mt-4 max-w-lg text-base text-navy-70 md:text-lg">{t.landing.sub}</p>
 
           <div className="mt-7 grid gap-3 sm:max-w-md">
-            {entries.map((e) => (
-              <button
-                key={e.role}
-                data-testid={`demo-${e.role}`}
-                onClick={() => go(e.role, e.href)}
-                disabled={busy !== null}
-                className={`btn w-full justify-between text-start ${e.primary ? "btn-primary py-4 text-lg" : "btn-ghost"}`}
-              >
-                <span>
-                  <span className="block">{e.label}</span>
-                  <span className={`block text-xs font-medium ${e.primary ? "text-white/80" : "text-navy-50"}`}>{e.hint}</span>
-                </span>
-                <Icon name="forward" className="shrink-0 rtl:rotate-180" />
-              </button>
-            ))}
+            <Link href="/find" data-testid="cta-find" className="btn btn-primary w-full justify-between py-4 text-start text-lg">
+              <span>
+                <span className="block">{t.landing.findCta}</span>
+                <span className="block text-xs font-medium text-white/80">{t.landing.findCtaHint}</span>
+              </span>
+              <Icon name="forward" className="shrink-0 rtl:rotate-180" />
+            </Link>
+            <Link href="/host" data-testid="cta-host" className="btn btn-ghost w-full justify-between text-start">
+              <span>
+                <span className="block">{t.landing.hostCta}</span>
+                <span className="block text-xs font-medium text-navy-50">{t.landing.hostCtaHint}</span>
+              </span>
+              <Icon name="forward" className="shrink-0 rtl:rotate-180" />
+            </Link>
+            {user ? (
+              <Link href="/me" className="text-sm font-semibold text-blue underline-offset-2 hover:underline">
+                {user.name} · {t.nav.me}
+              </Link>
+            ) : (
+              <p className="flex gap-4 text-sm font-semibold">
+                <Link href="/login" data-testid="landing-login" className="text-blue underline-offset-2 hover:underline">
+                  {t.landing.signIn}
+                </Link>
+                <Link href="/signup" data-testid="landing-signup" className="text-blue underline-offset-2 hover:underline">
+                  {t.landing.signUp}
+                </Link>
+              </p>
+            )}
+          </div>
+
+          <div className="mt-8 sm:max-w-md">
+            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-navy-50">{t.landing.demoTitle}</p>
+            <DemoButtons onDone={(p) => router.push(after[p])} />
           </div>
         </div>
 

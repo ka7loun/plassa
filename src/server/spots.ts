@@ -3,6 +3,8 @@ import { AppError } from "./errors";
 import { quote, type PriceRules, type Quote } from "@/lib/pricing";
 import { fitsAvailability, type Availability } from "@/lib/time";
 import type { SpotInput } from "@/lib/validation";
+import type { PaymentMethod } from "@/lib/payments";
+import { PRIOR_MEAN, PRIOR_WEIGHT, rankScore, ratingAvg, sortSpots, type SortKey } from "@/lib/ranking";
 
 /** Bookings in these states hold the slot (pending ones only for 15 minutes). */
 export const LIVE_STATUSES = ["pending_payment", "confirmed", "checked_in"] as const;
@@ -24,7 +26,14 @@ export interface SpotRow {
   private_attested: boolean;
   gardien_name: string | null;
   gardien_phone: string | null;
-  photo_url: string | null;
+  photos: string[];
+  payment_methods: PaymentMethod[];
+  rating_sum: number;
+  rating_count: number;
+  zone_name_fr?: string;
+  zone_name_ar?: string;
+  zone_name_en?: string;
+  bookings_30d?: string | number;
   price_millimes: number;
   peak_multiplier: string | number;
   peak_start_hour: number | null;
@@ -54,7 +63,11 @@ export interface SpotDTO {
   privateAttested: boolean;
   gardienName: string | null;
   gardienPhone: string | null;
-  photoUrl: string | null;
+  photos: string[];
+  paymentMethods: PaymentMethod[];
+  rating: { avg: number | null; count: number; score: number };
+  zoneName?: { fr: string; ar: string; en: string };
+  bookings30d?: number;
   priceMillimes: number;
   peakMultiplier: number;
   peakStartHour: number | null;
@@ -102,7 +115,9 @@ export function toDTO(r: SpotRow, window?: { start: Date; end: Date }): SpotDTO 
     privateAttested: r.private_attested,
     gardienName: r.gardien_name,
     gardienPhone: r.gardien_phone,
-    photoUrl: r.photo_url,
+    photos: r.photos ?? [],
+    paymentMethods: r.payment_methods ?? ["cash"],
+    rating: { avg: ratingAvg(r.rating_sum ?? 0, r.rating_count ?? 0), count: r.rating_count ?? 0, score: rankScore(r.rating_sum ?? 0, r.rating_count ?? 0) },
     priceMillimes: r.price_millimes,
     peakMultiplier: Number(r.peak_multiplier),
     peakStartHour: r.peak_start_hour,
@@ -114,6 +129,8 @@ export function toDTO(r: SpotRow, window?: { start: Date; end: Date }): SpotDTO 
     active: r.active,
   };
   if (r.distance_m != null) dto.distanceM = Math.round(r.distance_m);
+  if (r.zone_name_fr) dto.zoneName = { fr: r.zone_name_fr, ar: r.zone_name_ar ?? r.zone_name_fr, en: r.zone_name_en ?? r.zone_name_fr };
+  if (r.bookings_30d != null) dto.bookings30d = Number(r.bookings_30d);
   if (window) {
     const open = fitsAvailability(availOf(r), window.start, window.end);
     dto.available = open && !r.busy;
@@ -138,6 +155,7 @@ export interface SearchParams {
   start: Date;
   end: Date;
   limit: number;
+  sort?: SortKey;
 }
 
 /**
@@ -155,7 +173,10 @@ export async function searchSpots(db: Db, p: SearchParams, opts: { log?: boolean
       limit $6`,
     [p.lat, p.lng, p.radius, p.start.toISOString(), p.end.toISOString(), p.limit],
   );
-  const spots = rows.map((r) => toDTO(r, { start: p.start, end: p.end }));
+  const spots = sortSpots(
+    rows.map((r) => toDTO(r, { start: p.start, end: p.end })),
+    p.sort ?? "recommended",
+  );
   if (opts.log !== false) {
     // anonymous demand signal for the city view; never blocks the response
     void logSearch(db, p.lat, p.lng, spots.length, spots.filter((s) => s.available).length).catch(() => {});
@@ -190,6 +211,41 @@ export async function getSpot(db: Db, id: string, window?: { start: Date; end: D
   return toDTO(rows[0], window);
 }
 
+export interface ReviewDTO {
+  id: string;
+  rating: number;
+  comment: string;
+  driverName: string;
+  createdAt: string;
+}
+
+export async function spotReviews(db: Db, spotId: string, limit = 5): Promise<ReviewDTO[]> {
+  const { rows } = await db.query<{ id: string; rating: number; comment: string; driver_name: string; created_at: Date }>(
+    `select r.id, r.rating, r.comment, u.name as driver_name, r.created_at
+       from reviews r join users u on u.id = r.driver_id
+      where r.spot_id = $1
+      order by (r.comment <> '') desc, r.created_at desc
+      limit $2`,
+    [spotId, limit],
+  );
+  return rows.map((r) => ({ id: r.id, rating: r.rating, comment: r.comment, driverName: r.driver_name, createdAt: new Date(r.created_at).toISOString() }));
+}
+
+/** City-wide ranking: Bayesian rating first, recent bookings break ties. */
+export async function topSpots(db: Db, limit = 10) {
+  const { rows } = await db.query<SpotRow>(
+    `select s.*, z.name_fr as zone_name_fr, z.name_ar as zone_name_ar, z.name_en as zone_name_en,
+            (select count(*) from bookings b where b.spot_id = s.id and b.status in ('confirmed','checked_in')
+                and b.start_at >= now() - interval '30 days') as bookings_30d
+       from spots s left join zones z on z.id = s.zone_id
+      where s.active and s.rating_count > 0
+      order by ($2::float * $3::float + s.rating_sum) / ($2::float + s.rating_count) desc, bookings_30d desc, s.created_at
+      limit $1`,
+    [limit, PRIOR_WEIGHT, PRIOR_MEAN],
+  );
+  return rows.map((r) => toDTO(r));
+}
+
 /** Booked intervals for a spot on a given range (for the day timeline). */
 export async function spotSchedule(db: Db, id: string, from: Date, to: Date) {
   const { rows } = await db.query<{ start_at: Date; end_at: Date }>(
@@ -214,7 +270,7 @@ function spotParams(input: SpotInput) {
     input.covered ?? false,
     input.gardienName || null,
     input.gardienPhone || null,
-    input.photoUrl || null,
+    input.photos ?? [],
     input.priceMillimes,
     input.peakMultiplier ?? 1,
     input.peakStartHour,
@@ -223,6 +279,7 @@ function spotParams(input: SpotInput) {
     input.availDays,
     input.availStartMin,
     input.availEndMin,
+    input.paymentMethods ?? ["cash", "d17", "flouci", "card"],
   ];
 }
 
@@ -233,9 +290,9 @@ export async function createSpot(db: Db, hostId: string, input: SpotInput) {
         order by earth_distance(ll_to_earth($4, $5), ll_to_earth(center_lat, center_lng)) limit 1
      )
      insert into spots (host_id, city_id, zone_id, title, description, address, lat, lng, spot_type, covered,
-                        private_attested, gardien_name, gardien_phone, photo_url, price_millimes, peak_multiplier,
-                        peak_start_hour, peak_end_hour, peak_months, avail_days, avail_start_min, avail_end_min)
-     select $19, z.city_id, z.id, $1, $2, $3, $4, $5, $6, $7, true, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18
+                        private_attested, gardien_name, gardien_phone, photos, price_millimes, peak_multiplier,
+                        peak_start_hour, peak_end_hour, peak_months, avail_days, avail_start_min, avail_end_min, payment_methods)
+     select $20, z.city_id, z.id, $1, $2, $3, $4, $5, $6, $7, true, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19
        from z
      returning *`,
     [...spotParams(input), hostId],
@@ -250,10 +307,10 @@ export async function updateSpot(db: Db, hostId: string, spotId: string, input: 
   if (owner.rows[0].host_id !== hostId) throw new AppError("forbidden", "not your spot");
   const { rows } = await db.query<SpotRow>(
     `update spots set title=$1, description=$2, address=$3, lat=$4, lng=$5, spot_type=$6, covered=$7,
-            gardien_name=$8, gardien_phone=$9, photo_url=$10, price_millimes=$11, peak_multiplier=$12,
+            gardien_name=$8, gardien_phone=$9, photos=$10, price_millimes=$11, peak_multiplier=$12,
             peak_start_hour=$13, peak_end_hour=$14, peak_months=$15, avail_days=$16, avail_start_min=$17,
-            avail_end_min=$18, active=coalesce($21, active)
-      where id=$19 and host_id=$20
+            avail_end_min=$18, payment_methods=$19, active=coalesce($22, active)
+      where id=$20 and host_id=$21
       returning *`,
     [...spotParams(input), spotId, hostId, input.active ?? null],
   );
@@ -261,7 +318,16 @@ export async function updateSpot(db: Db, hostId: string, spotId: string, input: 
 }
 
 export async function setSpotActive(db: Db, hostId: string, spotId: string, active: boolean) {
-  const { rows } = await db.query<SpotRow>("update spots set active=$3 where id=$1 and host_id=$2 returning *", [spotId, hostId, active]);
+  return patchSpot(db, hostId, spotId, { active });
+}
+
+/** Partial update by the owner: visibility, accepted payment methods, photos. */
+export async function patchSpot(db: Db, hostId: string, spotId: string, p: { active?: boolean; paymentMethods?: PaymentMethod[]; photos?: string[] }) {
+  const { rows } = await db.query<SpotRow>(
+    `update spots set active = coalesce($3, active), payment_methods = coalesce($4, payment_methods), photos = coalesce($5, photos)
+      where id=$1 and host_id=$2 returning *`,
+    [spotId, hostId, p.active ?? null, p.paymentMethods ?? null, p.photos ?? null],
+  );
   if (!rows[0]) {
     const exists = await db.query("select 1 from spots where id=$1", [spotId]);
     throw new AppError(exists.rowCount ? "forbidden" : "not_found");
@@ -270,7 +336,12 @@ export async function setSpotActive(db: Db, hostId: string, spotId: string, acti
 }
 
 export async function listHostSpots(db: Db, hostId: string) {
-  const { rows } = await db.query<SpotRow>("select * from spots where host_id = $1 order by created_at desc", [hostId]);
+  const { rows } = await db.query<SpotRow>(
+    `select s.*, (select count(*) from bookings b where b.spot_id = s.id and b.status in ('confirmed','checked_in')
+                    and b.start_at >= now() - interval '30 days') as bookings_30d
+       from spots s where s.host_id = $1 order by s.created_at desc`,
+    [hostId],
+  );
   return rows.map((r) => toDTO(r));
 }
 

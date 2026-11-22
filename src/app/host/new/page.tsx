@@ -4,7 +4,9 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { api, ApiError, errorText, useApp } from "@/components/AppProvider";
 import { MapView } from "@/components/MapView";
-import { Alert, Page, RequireRole } from "@/components/Shell";
+import { Alert, Page, RequireUser } from "@/components/Shell";
+import { PhotoPicker } from "@/components/PhotoPicker";
+import { PAYMENT_METHODS, type PaymentMethod } from "@/lib/payments";
 
 const TYPES = ["garage", "courtyard", "driveway", "lot", "basement"] as const;
 const HOURS = Array.from({ length: 49 }, (_, i) => i * 30);
@@ -32,6 +34,8 @@ function NewSpotForm() {
     gardienName: "",
     gardienPhone: "",
     privateAttested: false,
+    photos: [] as string[],
+    paymentMethods: [...PAYMENT_METHODS] as PaymentMethod[],
   });
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<unknown>(null);
@@ -68,6 +72,8 @@ function NewSpotForm() {
           availDays: form.availDays,
           availStartMin: form.availStartMin,
           availEndMin: form.availEndMin,
+          photos: form.photos,
+          paymentMethods: form.paymentMethods,
         },
       });
       router.push("/host?published=1");
@@ -116,10 +122,38 @@ function NewSpotForm() {
         </div>
       </div>
 
+      <div className="card grid gap-2 p-4">
+        <p className="label mb-0">{t.host.fPhotos}</p>
+        <p className="text-xs text-navy-50">{t.host.fPhotosHint}</p>
+        <PhotoPicker value={form.photos} onChange={(p) => set("photos", p)} />
+      </div>
+
       <div className="card grid gap-3 p-4">
         <div>
           <label className="label" htmlFor="price">{t.host.fPrice}</label>
           <input id="price" className="input num" inputMode="decimal" value={form.price} onChange={(e) => set("price", e.target.value)} dir="ltr" />
+        </div>
+        <div>
+          <p className="label">{t.host.fMethods}</p>
+          <div className="flex flex-wrap gap-1.5">
+            {PAYMENT_METHODS.map((m) => {
+              const on = form.paymentMethods.includes(m);
+              return (
+                <button
+                  type="button"
+                  key={m}
+                  className="chip"
+                  aria-pressed={on}
+                  disabled={on && form.paymentMethods.length === 1}
+                  onClick={() => set("paymentMethods", PAYMENT_METHODS.filter((x) => (x === m ? !on : form.paymentMethods.includes(x))))}
+                  data-testid={`new-method-${m}`}
+                >
+                  {t.spot.method[m]}
+                </button>
+              );
+            })}
+          </div>
+          <p className="mt-1 text-xs text-navy-50">{t.host.fMethodsHint}</p>
         </div>
         <label className="flex items-center gap-2 text-sm font-semibold">
           <input type="checkbox" checked={form.peakOn} onChange={(e) => set("peakOn", e.target.checked)} /> {t.host.fPeak}
@@ -220,9 +254,9 @@ function NewSpotForm() {
 export default function NewSpotPage() {
   return (
     <Page>
-      <RequireRole role="host">
+      <RequireUser>
         <NewSpotForm />
-      </RequireRole>
+      </RequireUser>
     </Page>
   );
 }

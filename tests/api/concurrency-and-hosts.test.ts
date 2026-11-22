@@ -26,7 +26,8 @@ const newSpot = {
   privateAttested: true as const,
   gardienName: null,
   gardienPhone: null,
-  photoUrl: null,
+  photos: [],
+  paymentMethods: ["cash", "d17", "flouci", "card"],
   priceMillimes: 1500,
   peakMultiplier: 1,
   peakStartHour: null,
@@ -106,9 +107,4 @@ describe("city view", () => {
     expect(s.totals.circlingMinutesSaved).toBe(s.totals.bookings * s.totals.assumedCirclingMinPerBooking);
   });
 
-  it("keeps cities separate", async () => {
-    const m = await cityStats(pool, "monastir");
-    expect(m.zones.map((z) => z.id)).toEqual(["monastir-centre"]);
-    expect(m.totals.activeSpots).toBe(3);
-  });
 });

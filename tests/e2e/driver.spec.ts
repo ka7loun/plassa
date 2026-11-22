@@ -34,7 +34,16 @@ test.describe("driver", () => {
     await page.getByTestId("demo-driver").click();
     await expect(page).toHaveURL(/\/find/);
     await page.getByTestId("dur-1").click();
-    await page.locator('[data-testid="spot-card"][data-available="1"]').nth(1).click();
+    // each host picks the payment methods they accept: open free spots until one takes Flouci
+    const cards = page.locator('[data-testid="spot-card"][data-available="1"]');
+    await expect(cards.first()).toBeVisible();
+    for (let i = 0; ; i++) {
+      expect(i, "a free spot that accepts Flouci").toBeLessThan(10);
+      await cards.nth(i).click();
+      await expect(page.getByTestId("book")).toBeVisible();
+      if ((await page.getByTestId("pay-flouci").count()) > 0) break;
+      await page.goBack();
+    }
     await page.getByTestId("pay-flouci").check({ force: true });
     await page.getByTestId("book").click();
 
@@ -55,15 +64,74 @@ test.describe("driver", () => {
     await page.getByTestId("lang-ar").click();
     await expect(page.locator("html")).toHaveAttribute("dir", "rtl");
     await expect(page.locator("html")).toHaveAttribute("lang", "ar");
-    await expect(page.getByTestId("demo-driver")).toContainText("لوّج على بلاصة");
+    await expect(page.getByTestId("cta-find")).toContainText("لوّج على بلاصة");
     await page.reload(); // choice persists in a cookie, server renders RTL
     await expect(page.locator("html")).toHaveAttribute("dir", "rtl");
     await page.screenshot({ path: "docs/tests/screens/landing-ar.png" });
     await page.getByTestId("lang-fr").click();
   });
 
+  test("a visitor signs up, then books with the new account", async ({ page }) => {
+    // guests can browse; booking asks them to sign in and brings them back
+    await page.goto("/find");
+    await page.getByTestId("dur-2").click();
+    await page.locator('[data-testid="spot-card"][data-available="1"]').first().click();
+    await expect(page.getByTestId("book")).toHaveText(/Se connecter pour réserver/);
+    await page.getByTestId("book").click();
+    await expect(page).toHaveURL(/\/login\?next=/);
+
+    await page.getByRole("link", { name: "Créer un compte" }).last().click();
+    await expect(page).toHaveURL(/\/signup\?next=/);
+    const phone = `9${String(Date.now()).slice(-7)}`;
+    await page.getByTestId("auth-name").fill("Test Signup");
+    await page.getByTestId("auth-phone").fill(phone);
+    await page.getByTestId("auth-password").fill("motdepasse-e2e");
+    await page.getByTestId("auth-submit").click();
+
+    await expect(page).toHaveURL(/\/spot\//);
+    await expect(page.getByTestId("book")).toHaveText(/Réserver/);
+
+    await page.goto("/me");
+    await expect(page.getByTestId("level-name")).toHaveText("Débutant");
+    await expect(page.getByTestId("badges-driver")).toBeVisible();
+    await page.screenshot({ path: "docs/tests/screens/profile-new.png" });
+
+    // the same phone cannot sign up twice; logging in with it works
+    await page.context().clearCookies();
+    await page.goto("/signup");
+    await page.getByTestId("auth-name").fill("Doublon");
+    await page.getByTestId("auth-phone").fill(phone);
+    await page.getByTestId("auth-password").fill("motdepasse-e2e");
+    await page.getByTestId("auth-submit").click();
+    await expect(page.getByText("Un compte utilise déjà ce numéro.")).toBeVisible();
+    await page.goto("/login");
+    await page.getByTestId("auth-phone").fill(phone);
+    await page.getByTestId("auth-password").fill("motdepasse-e2e");
+    await page.getByTestId("auth-submit").click();
+    await expect(page).toHaveURL(/\/find/);
+  });
+
+  test("the demo driver sees points, badges and stays to rate, and rates one", async ({ page }) => {
+    await page.goto("/");
+    await page.getByTestId("demo-driver").click();
+    await expect(page).toHaveURL(/\/find/);
+    await page.goto("/me");
+    await expect(page.getByTestId("level-card")).toBeVisible();
+    await expect(page.locator('[data-testid="badges-driver"] [data-earned="1"]').first()).toBeVisible();
+    const toReview = page.getByTestId("to-review");
+    const before = await toReview.getByTestId("review-form").count();
+    expect(before).toBeGreaterThan(0);
+    await toReview.getByTestId("star-5").first().click();
+    await toReview.getByTestId("review-send").first().click();
+    await expect(toReview.getByTestId("review-form")).toHaveCount(before - 1);
+    await page.screenshot({ path: "docs/tests/screens/profile-driver.png", fullPage: true });
+
+    await page.goto("/top");
+    await expect(page.getByTestId("top-spots").locator("li")).toHaveCount(10);
+  });
+
   test("has no horizontal scroll on a phone", async ({ page }) => {
-    for (const path of ["/", "/find"]) {
+    for (const path of ["/", "/find", "/top", "/login"]) {
       await page.goto(path);
       await page.waitForLoadState("networkidle");
       const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);

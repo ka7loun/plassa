@@ -1,7 +1,8 @@
 import { SignJWT, jwtVerify } from "jose";
 import { cookies } from "next/headers";
 
-export type Role = "driver" | "host" | "admin";
+/** Every account can book and rent out spots; "admin" is the city operator view. */
+export type Role = "user" | "admin";
 export interface Session {
   userId: string;
   role: Role;
@@ -9,7 +10,7 @@ export interface Session {
 }
 
 export const SESSION_COOKIE = "plassa_session";
-const MAX_AGE_S = 60 * 60 * 24 * 7;
+const MAX_AGE_S = 60 * 60 * 24 * 30;
 
 function secret() {
   const s = process.env.SESSION_SECRET;
@@ -32,8 +33,9 @@ export async function verifySession(token: string | undefined): Promise<Session 
   if (!token) return null;
   try {
     const { payload } = await jwtVerify(token, secret(), { algorithms: ["HS256"] });
-    const role = payload.role;
-    if (!payload.sub || (role !== "driver" && role !== "host" && role !== "admin")) return null;
+    // cookies issued before accounts existed carried "driver" / "host"
+    const role = payload.role === "admin" ? "admin" : ["user", "driver", "host"].includes(String(payload.role)) ? "user" : null;
+    if (!payload.sub || !role) return null;
     return { userId: payload.sub, role, name: String(payload.name ?? "") };
   } catch {
     return null;

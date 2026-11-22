@@ -1,5 +1,5 @@
 import type { Pool, PoolClient } from "pg";
-import { EXCLUSION_VIOLATION, pgCode, withTx, type Db } from "./db";
+import { EXCLUSION_VIOLATION, pgCode, UNIQUE_VIOLATION, withTx, type Db } from "./db";
 import { AppError } from "./errors";
 import { availOf, PENDING_TTL_MIN, rulesOf, type SpotRow } from "./spots";
 import { generateCheckinCode } from "@/lib/checkin";
@@ -31,6 +31,8 @@ export interface BookingRow {
   gardien_phone?: string | null;
   host_name?: string;
   driver_name?: string;
+  spot_photo?: string | null;
+  my_rating?: number | null;
 }
 
 export interface BookingDTO {
@@ -48,8 +50,10 @@ export interface BookingDTO {
   checkinCode?: string;
   plate: string | null;
   createdAt: string;
-  spot?: { title: string; address: string; lat: number; lng: number; gardienName: string | null; gardienPhone: string | null; hostName?: string };
+  spot?: { title: string; address: string; lat: number; lng: number; gardienName: string | null; gardienPhone: string | null; hostName?: string; photo?: string | null };
   driverName?: string;
+  /** The driver's rating of this stay, null when not rated yet. */
+  myRating?: number | null;
 }
 
 export function bookingDTO(r: BookingRow, opts: { withCode?: boolean } = {}): BookingDTO {
@@ -78,15 +82,19 @@ export function bookingDTO(r: BookingRow, opts: { withCode?: boolean } = {}): Bo
             gardienName: r.gardien_name ?? null,
             gardienPhone: r.gardien_phone ?? null,
             hostName: r.host_name,
+            photo: r.spot_photo ?? null,
           }
         : undefined,
     driverName: r.driver_name,
+    myRating: r.my_rating ?? null,
   };
 }
 
 const JOINED = `select b.*, s.title as spot_title, s.address as spot_address, s.lat as spot_lat, s.lng as spot_lng,
-                       s.gardien_name, s.gardien_phone, h.name as host_name, d.name as driver_name
+                       s.gardien_name, s.gardien_phone, h.name as host_name, d.name as driver_name,
+                       s.photos[1] as spot_photo, rv.rating as my_rating
                   from bookings b
+                  left join reviews rv on rv.booking_id = b.id
                   join spots s on s.id = b.spot_id
                   join users h on h.id = s.host_id
                   join users d on d.id = b.driver_id`;
@@ -109,6 +117,10 @@ export async function createBooking(pool: Pool, driverId: string, input: CreateB
     const { rows } = await c.query<SpotRow>("select * from spots where id = $1 and active", [input.spotId]);
     const spot = rows[0];
     if (!spot) throw new AppError("not_found", "spot not found");
+    if (spot.host_id === driverId) throw new AppError("own_spot", "you cannot book your own spot");
+    if (!(spot.payment_methods ?? []).includes(input.paymentMethod)) {
+      throw new AppError("method_not_accepted", "the host does not accept this payment method", { accepted: spot.payment_methods });
+    }
     if (!fitsAvailability(availOf(spot), input.start, input.end)) {
       throw new AppError("outside_availability", "the spot is closed at that time");
     }
@@ -244,4 +256,26 @@ export async function hostSummary(db: Db, hostId: string, now = new Date()) {
     upcomingBookings: Number(r.upcoming),
     activeSpots: Number(r.spots),
   };
+}
+
+/** A stay can be rated once, by its driver, after it has ended (or after check-in). */
+export async function createReview(pool: Pool, driverId: string, bookingId: string, input: { rating: number; comment: string }, now = new Date()) {
+  return withTx(pool, async (c) => {
+    const { rows } = await c.query<BookingRow>("select * from bookings where id = $1 for update", [bookingId]);
+    const b = rows[0];
+    if (!b) throw new AppError("not_found", "booking not found");
+    if (b.driver_id !== driverId) throw new AppError("forbidden", "not your booking");
+    const stayed = b.status === "checked_in" || (b.status === "confirmed" && new Date(b.end_at) <= now);
+    if (!stayed) throw new AppError("not_reviewable", "you can rate a spot after your stay");
+    try {
+      await c.query("insert into reviews (booking_id, spot_id, driver_id, rating, comment) values ($1,$2,$3,$4,$5)", [
+        b.id, b.spot_id, driverId, input.rating, input.comment ?? "",
+      ]);
+    } catch (e) {
+      if (pgCode(e) === UNIQUE_VIOLATION) throw new AppError("already_reviewed", "you already rated this stay");
+      throw e;
+    }
+    await c.query("update spots set rating_sum = rating_sum + $2, rating_count = rating_count + 1 where id = $1", [b.spot_id, input.rating]);
+    return { rating: input.rating };
+  });
 }

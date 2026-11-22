@@ -5,7 +5,18 @@ test("host lists a new spot and drivers can find it", async ({ page, request }) 
   await page.getByTestId("demo-host").click();
   await expect(page).toHaveURL(/\/host/);
   await expect(page.getByTestId("host-summary")).toBeVisible();
-  await page.screenshot({ path: "docs/tests/screens/host-dashboard.png" });
+  await expect(page.getByTestId("earnings-chart")).toBeVisible();
+  await expect(page.getByTestId("host-rank")).toHaveText(/sur/);
+  await page.screenshot({ path: "docs/tests/screens/host-dashboard.png", fullPage: true });
+
+  // the host decides which payment methods drivers see
+  const first = page.getByTestId("host-spot").first();
+  const card = first.getByTestId("method-card");
+  const wasOn = (await card.getAttribute("aria-pressed")) === "true";
+  await card.click();
+  await expect(card).toHaveAttribute("aria-pressed", wasOn ? "false" : "true");
+  await card.click();
+  await expect(card).toHaveAttribute("aria-pressed", wasOn ? "true" : "false");
 
   await page.getByTestId("add-spot").click();
   const title = `Garage e2e ${Date.now()}`;
@@ -17,6 +28,9 @@ test("host lists a new spot and drivers can find it", async ({ page, request }) 
   const box = (await map.boundingBox())!;
   await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
   await page.getByLabel("Prix par heure (DT)").fill("1.800");
+  // accept cash and D17 only
+  await page.getByTestId("new-method-flouci").click();
+  await page.getByTestId("new-method-card").click();
   await page.getByTestId("private-attest").check();
   await page.getByTestId("publish").click();
 
@@ -32,7 +46,8 @@ test("host lists a new spot and drivers can find it", async ({ page, request }) 
   });
   expect(res.ok()).toBeTruthy();
   const body = await res.json();
-  expect(body.spots.some((s: { title: string }) => s.title === title)).toBe(true);
+  const mine = body.spots.find((s: { title: string }) => s.title === title);
+  expect(mine.paymentMethods).toEqual(["cash", "d17"]);
 });
 
 test("city view shows demand and supply", async ({ page }) => {

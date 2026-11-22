@@ -1,10 +1,10 @@
 import { z } from "zod";
 import { db } from "@/server/db";
 import { getDriverBooking } from "@/server/bookings";
-import { handler, json, requireRole } from "@/server/http";
+import { handler, json, requireUser } from "@/server/http";
 
 export const GET = handler(async (_req: Request, ctx: RouteContext<"/api/bookings/[id]">) => {
-  const s = await requireRole("driver");
+  const s = await requireUser();
   const id = z.string().uuid().parse((await ctx.params).id);
   return json({ booking: await getDriverBooking(db(), s.userId, id) });
 });

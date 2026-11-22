@@ -48,6 +48,7 @@ export async function withTx<T>(pool: Pool, fn: (c: PoolClient) => Promise<T>): 
 
 /** Postgres error code for an exclusion-constraint violation. */
 export const EXCLUSION_VIOLATION = "23P01";
+export const UNIQUE_VIOLATION = "23505";
 
 export function pgCode(e: unknown): string | undefined {
   return typeof e === "object" && e && "code" in e ? String((e as { code: unknown }).code) : undefined;

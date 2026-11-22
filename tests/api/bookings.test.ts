@@ -131,13 +131,17 @@ describe("cancelling and checking in", () => {
 });
 
 describe("search", () => {
-  it("returns spots by distance and marks booked ones unavailable", async () => {
+  it("sorts free spots first, then by distance, and marks booked ones unavailable", async () => {
     const w = future(6, "10:30", 1); // inside the first booking above
-    const spots = await searchSpots(pool, { lat: 35.8346, lng: 10.6312, radius: 1500, ...w, limit: 50 }, { log: false });
+    const spots = await searchSpots(pool, { lat: 35.8346, lng: 10.6312, radius: 1500, ...w, limit: 50, sort: "distance" }, { log: false });
     expect(spots.length).toBeGreaterThan(3);
-    const d = spots.map((s) => s.distanceM!);
-    expect([...d].sort((a, b) => a - b)).toEqual(d);
-    expect(d.every((x) => x <= 1500)).toBe(true);
+    const firstBusy = spots.findIndex((s) => !s.available);
+    expect(firstBusy === -1 || spots.slice(firstBusy).every((s) => !s.available)).toBe(true);
+    for (const group of [spots.filter((s) => s.available), spots.filter((s) => !s.available)]) {
+      const d = group.map((s) => s.distanceM!);
+      expect([...d].sort((a, b) => a - b)).toEqual(d);
+    }
+    expect(spots.every((s) => s.distanceM! <= 1500)).toBe(true);
     const target = spots.find((s) => s.id === ALWAYS_OPEN)!;
     expect(target.available).toBe(false);
     expect(target.unavailableReason).toBe("booked");

@@ -14,6 +14,7 @@ export const GET = handler(async (req: NextRequest) => {
     start: new Date(q.start),
     end: new Date(q.end),
     limit: q.limit,
+    sort: q.sort,
   }, { log: req.headers.get("x-plassa-nolog") !== "1" });
   return json({ count: spots.length, available: spots.filter((s) => s.available).length, spots });
 });

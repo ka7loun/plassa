@@ -4,6 +4,17 @@ import { MAX_BOOKING_MIN } from "./pricing";
 
 const isoDate = z.string().datetime({ offset: true });
 
+/** Seeded stock photos (/spots/x.jpg) or uploaded ones (/api/photos/<uuid>). */
+export const photoPath = z
+  .string()
+  .regex(/^(\/spots\/[a-z0-9-]+\.jpg|\/api\/photos\/[0-9a-f-]{36})$/, "unknown photo");
+
+export const paymentMethods = z
+  .array(z.enum(PAYMENT_METHODS as [string, ...string[]]))
+  .min(1, "choose at least one payment method")
+  .max(4)
+  .transform((a) => [...new Set(a)]);
+
 export const searchQuery = z
   .object({
     lat: z.coerce.number().min(-90).max(90),
@@ -12,6 +23,7 @@ export const searchQuery = z
     start: isoDate,
     end: isoDate,
     limit: z.coerce.number().int().min(1).max(200).default(60),
+    sort: z.enum(["recommended", "distance", "price", "rating"]).default("recommended"),
   })
   .refine((q) => new Date(q.end) > new Date(q.start), { message: "end must be after start", path: ["end"] });
 
@@ -57,7 +69,8 @@ export const spotBody = z
       .optional()
       .nullable()
       .or(z.literal("")),
-    photoUrl: z.string().url().max(500).optional().nullable().or(z.literal("")),
+    photos: z.array(photoPath).max(6).default([]),
+    paymentMethods: paymentMethods.default(["cash", "d17", "flouci", "card"]),
     priceMillimes: z.number().int().min(100).max(100_000),
     peakMultiplier: z.number().min(1).max(2).default(1),
     peakStartHour: z.number().int().min(0).max(23).nullable().default(null),
@@ -76,5 +89,30 @@ export const spotBody = z
 export const checkinBody = z.object({ code: z.string().regex(/^\d{4}$/) });
 
 export const demoLoginBody = z.object({ role: z.enum(["driver", "host", "admin"]) });
+
+const phoneField = z
+  .string()
+  .trim()
+  .regex(/^(\+216|00216)?[\s.-]?(\d[\s.-]?){8}$/, "Tunisian phone number, e.g. 22 123 456");
+
+export const signupBody = z.object({
+  name: z.string().trim().min(2).max(60),
+  phone: phoneField,
+  password: z.string().min(8, "at least 8 characters").max(100),
+});
+
+export const loginBody = z.object({
+  phone: z.string().trim().min(8).max(20),
+  password: z.string().min(1).max(100),
+});
+
+export const reviewBody = z.object({
+  rating: z.number().int().min(1).max(5),
+  comment: z.string().trim().max(300).default(""),
+});
+
+export const spotPatchBody = z
+  .object({ active: z.boolean().optional(), paymentMethods: paymentMethods.optional(), photos: z.array(photoPath).max(6).optional() })
+  .refine((b) => b.active !== undefined || b.paymentMethods !== undefined || b.photos !== undefined, { message: "nothing to update" });
 
 export type SpotInput = z.infer<typeof spotBody>;
